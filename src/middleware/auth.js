@@ -21,6 +21,20 @@ const authenticate = (req, res, next) => {
 };
 
 /**
+ * Verify access token but don't fail if absent.
+ */
+const optionalAuthenticate = (req, res, next) => {
+  const header = req.headers.authorization;
+  if (header && header.startsWith('Bearer ')) {
+    const token = header.slice(7);
+    try {
+      req.user = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {}
+  }
+  next();
+};
+
+/**
  * Require specific roles.
  * Usage: authorize('farmer', 'supplier')
  */
@@ -31,4 +45,4 @@ const authorize = (...roles) => (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, authorize };
+module.exports = { authenticate, authorize, optionalAuthenticate };

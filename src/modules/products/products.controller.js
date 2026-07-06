@@ -96,7 +96,7 @@ const updateProduct = async (req, res) => {
     }
     const ALLOWED = ['name','description','category','pricePerUnit','unit',
       'availableQuantity','minOrderQuantity','status','farmingType',
-      'province','harvestDate','expiryDate','certifications'];
+      'province','harvestDate','expiryDate','certifications','images'];
     const update = {};
     for (const k of ALLOWED) if (req.body[k] !== undefined) update[k] = req.body[k];
     Object.assign(product, update);
