@@ -1,11 +1,11 @@
 const router = require('express').Router();
-const { authenticate, authorize } = require('../../middleware/auth');
+const { authenticate, authorize, optionalAuthenticate } = require('../../middleware/auth');
 const ctrl = require('./products.controller');
 
 // Public
 router.get('/categories', ctrl.getCategories);              // TV2 task #10
-router.get('/', ctrl.getProducts);                          // TV2 task #1 — public list
-router.get('/:id', ctrl.getProductById);
+router.get('/', optionalAuthenticate, ctrl.getProducts);                          // TV2 task #1 — public list
+router.get('/:id', optionalAuthenticate, ctrl.getProductById);
 
 // Farmer / Supplier only
 router.post('/', authenticate, authorize('farmer', 'supplier'), ctrl.createProduct);       // TV2 task #2

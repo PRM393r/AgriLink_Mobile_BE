@@ -140,4 +140,117 @@ const updateStatus = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, getOrders, getOrderById, updateStatus };
+// ─── GET /orders/seller-stats ──────────────────────────────────────────────────
+// TV2 task #1: Thống kê Dashboard cho Seller
+const getSellerStats = async (req, res) => {
+  try {
+    const sellerId = req.user.sub;
+
+    const [totalRevenueResult, totalOrders, pendingOrders, totalProducts] = await Promise.all([
+      // Tổng doanh thu từ các đơn hàng 'delivered'
+      Order.aggregate([
+        { $match: { sellerId, status: 'delivered' } },
+        { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+      ]),
+      // Tổng số đơn hàng
+      Order.countDocuments({ sellerId }),
+      // Số đơn hàng đang xử lý
+      Order.countDocuments({ sellerId, status: { $in: ['confirmed', 'preparing', 'pending'] } }),
+      // Tổng số sản phẩm
+      Product.countDocuments({ sellerId }),
+    ]);
+
+    const totalRevenue = totalRevenueResult[0]?.total || 0;
+
+    return sendSuccess(res, {
+      totalRevenue,
+      totalOrders,
+      pendingOrders,
+      totalProducts
+    });
+  } catch (err) {
+    return sendError(res, 500, err.message);
+  }
+};
+
+// ─── GET /orders/seller-stats/monthly ───────────────────────────────────────────
+const getMonthlyRevenue = async (req, res) => {
+  try {
+    const sellerId = req.user.sub;
+    const { type } = req.query; // 'daily' or 'monthly'
+    const now = new Date();
+    const currentYear = now.getFullYear();
+
+    if (type === 'daily') {
+      const currentMonth = now.getMonth() + 1; // 1-12
+      // Số ngày trong tháng hiện tại
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+      
+      const stats = await Order.aggregate([
+        {
+          $match: {
+            sellerId,
+            status: 'delivered',
+            createdAt: {
+              $gte: new Date(`${currentYear}-${currentMonth.toString().padStart(2, '0')}-01T00:00:00.000Z`),
+              $lte: new Date(`${currentYear}-${currentMonth.toString().padStart(2, '0')}-${daysInMonth}T23:59:59.999Z`)
+            }
+          }
+        },
+        {
+          $group: {
+            _id: { $dayOfMonth: "$createdAt" },
+            revenue: { $sum: "$totalAmount" }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+
+      const formattedStats = Array.from({ length: daysInMonth }, (_, i) => {
+        const dayStat = stats.find(s => s._id === i + 1);
+        return {
+          label: i + 1,
+          revenue: dayStat ? dayStat.revenue : 0
+        };
+      });
+
+      return sendSuccess(res, formattedStats);
+    }
+
+    // Default to monthly
+    const stats = await Order.aggregate([
+      {
+        $match: {
+          sellerId,
+          status: 'delivered',
+          createdAt: {
+            $gte: new Date(`${currentYear}-01-01T00:00:00.000Z`),
+            $lte: new Date(`${currentYear}-12-31T23:59:59.999Z`)
+          }
+        }
+      },
+      {
+        $group: {
+          _id: { $month: "$createdAt" },
+          revenue: { $sum: "$totalAmount" }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const formattedStats = Array.from({ length: 12 }, (_, i) => {
+      const monthStat = stats.find(s => s._id === i + 1);
+      return {
+        label: i + 1,
+        revenue: monthStat ? monthStat.revenue : 0
+      };
+    });
+
+    return sendSuccess(res, formattedStats);
+  } catch (err) {
+    return sendError(res, 500, err.message);
+  }
+};
+
+module.exports = { createOrder, getOrders, getOrderById, updateStatus, getSellerStats, getMonthlyRevenue };
+
