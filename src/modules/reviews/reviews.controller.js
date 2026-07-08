@@ -7,6 +7,7 @@ const { sendSuccess, sendError } = require('../../utils/response');
 const getProductReviews = async (req, res) => {
   try {
     const reviews = await Review.find({ productId: req.params.productId })
+      .populate('buyerId', 'fullName avatar email')
       .sort({ createdAt: -1 })
       .lean();
     return sendSuccess(res, reviews);
