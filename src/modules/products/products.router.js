@@ -3,7 +3,8 @@ const { authenticate, authorize, optionalAuthenticate } = require('../../middlew
 const ctrl = require('./products.controller');
 
 // Public
-router.get('/categories', ctrl.getCategories);              // TV2 task #10
+router.get('/categories', ctrl.getCategories);              
+router.get('/categories/tree', ctrl.getCategoryTree);       // TV2 task #10
 router.get('/', optionalAuthenticate, ctrl.getProducts);                          // TV2 task #1 — public list
 router.get('/:id', optionalAuthenticate, ctrl.getProductById);
 
