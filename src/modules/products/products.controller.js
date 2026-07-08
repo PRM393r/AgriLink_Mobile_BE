@@ -56,6 +56,30 @@ const getCategories = async (req, res) => {
   return sendSuccess(res, CATEGORIES);
 };
 
+// ─── GET /products/categories/tree ───────────────────────────────────────────
+const getCategoryTree = async (req, res) => {
+  const CATEGORY_TREE = [
+    {
+      name: 'Nông sản tươi',
+      children: ['Rau củ quả', 'Trái cây', 'Hoa & Cây cảnh']
+    },
+    {
+      name: 'Thực phẩm khô & chế biến',
+      children: ['Lúa gạo & Ngũ cốc', 'Cà phê & Chè', 'Hạt & Đậu', 'Mật ong & Đặc sản', 'Gia vị & Thảo mộc']
+    },
+    {
+      name: 'Thủy hải sản & Thịt',
+      children: ['Thủy sản', 'Gia súc & Gia cầm']
+    },
+    {
+      name: 'Vật tư nông nghiệp',
+      children: ['Nông cụ & Máy móc', 'Phân bón & Thuốc BVTV', 'Hạt giống & Cây giống']
+    }
+  ];
+  return sendSuccess(res, CATEGORY_TREE);
+};
+
+
 // ─── GET /products/:id ────────────────────────────────────────────────────────
 const getProductById = async (req, res) => {
   try {
@@ -147,4 +171,8 @@ const addImage = async (req, res) => {
   }
 };
 
-module.exports = { getProducts, getCategories, getProductById, createProduct, updateProduct, deleteProduct, addImage };
+module.exports = {
+  getProducts,
+  getCategories,
+  getCategoryTree,
+  getProductById, createProduct, updateProduct, deleteProduct, addImage };
