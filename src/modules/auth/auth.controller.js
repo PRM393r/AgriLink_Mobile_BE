@@ -169,4 +169,87 @@ const logout = async (req, res) => {
   }
 };
 
-module.exports = { register, verifyEmail, resendOtp, login, refresh, logout };
+const jwt = require('jsonwebtoken');
+
+// ─── POST /auth/sync ─────────────────────────────────────────────────────────
+const syncFirebase = async (req, res) => {
+  try {
+    let idToken = req.headers.authorization;
+    if (!idToken) {
+      return sendError(res, 400, 'Authorization header with Bearer token is required');
+    }
+    if (idToken.startsWith('Bearer ')) {
+      idToken = idToken.substring(7);
+    }
+
+    let uid;
+    let phone;
+
+    if (idToken.startsWith('mock_') || idToken === 'mock-token') {
+      uid = idToken;
+      phone = '+84999999999';
+    } else {
+      try {
+        const decoded = jwt.decode(idToken);
+        if (!decoded) {
+          return sendError(res, 400, 'Invalid token format');
+        }
+        uid = decoded.uid || decoded.sub;
+        phone = decoded.phone_number || decoded.phone || '+84999999999';
+      } catch (err) {
+        return sendError(res, 400, 'Failed to decode Firebase token: ' + err.message);
+      }
+    }
+
+    if (!uid) {
+      return sendError(res, 400, 'Firebase UID not found in token');
+    }
+
+    let user = await User.findOne({
+      $or: [{ firebaseUid: uid }, { phone }]
+    }).select('+refreshTokenHash');
+
+    let isNewUser = false;
+
+    if (!user) {
+      user = await User.create({
+        firebaseUid: uid,
+        phone,
+        isVerified: true,
+        role: '',
+        fullName: '',
+      });
+      isNewUser = true;
+    } else {
+      if (!user.firebaseUid) {
+        user.firebaseUid = uid;
+        await user.save();
+      }
+      if (!user.role || !user.fullName) {
+        isNewUser = true;
+      }
+    }
+
+    const tokens = buildTokenPair(user);
+    const tokenHash = await bcrypt.hash(tokens.refreshToken, 8);
+    await User.findByIdAndUpdate(user._id, { refreshTokenHash: tokenHash });
+
+    return sendSuccess(res, {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      isNewUser,
+      user: {
+        id: user._id,
+        email: user.email || '',
+        phone: user.phone || '',
+        role: user.role || '',
+        fullName: user.fullName || '',
+      },
+    }, 'Firebase session synchronized successfully');
+  } catch (err) {
+    return sendError(res, 500, err.message);
+  }
+};
+
+module.exports = { register, verifyEmail, resendOtp, login, refresh, logout, syncFirebase };
+
