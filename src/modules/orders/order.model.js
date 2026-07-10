@@ -47,6 +47,13 @@ const orderSchema = new mongoose.Schema(
     },
     note: { type: String, default: '' },
     cancelReason: { type: String, default: '' },
+    statusHistory: [
+      {
+        status: String,
+        changedAt: { type: Date, default: Date.now },
+        _id: false,
+      },
+    ],
   },
   { timestamps: true }
 );

@@ -63,6 +63,7 @@ const createOrder = async (req, res) => {
       totalAmount,
       paymentMethod,
       note,
+      statusHistory: [{ status: 'pending', changedAt: new Date() }],
     });
 
     // Notify seller: đơn hàng mới
@@ -85,12 +86,22 @@ const createOrder = async (req, res) => {
 // Customer: xem đơn mình đặt. Seller: xem đơn mình nhận
 const getOrders = async (req, res) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
-    const role = req.user.role;
+    const { status, page = 1, limit = 20, role: queryRole } = req.query;
+    const userRole = req.user.role;
 
-    const filter = role === 'customer'
-      ? { buyerId: req.user.sub }
-      : { sellerId: req.user.sub };
+    // queryRole=buyer → luôn filter buyerId (farmer/supplier cũng có thể mua)
+    // queryRole=seller → filter sellerId
+    // Mặc định: customer → buyer, farmer/supplier → seller
+    let filter;
+    if (queryRole === 'buyer') {
+      filter = { buyerId: req.user.sub };
+    } else if (queryRole === 'seller') {
+      filter = { sellerId: req.user.sub };
+    } else {
+      filter = userRole === 'customer'
+        ? { buyerId: req.user.sub }
+        : { sellerId: req.user.sub };
+    }
 
     if (status) filter.status = status;
 
@@ -146,6 +157,7 @@ const updateStatus = async (req, res) => {
 
     order.status = status;
     if (status === 'cancelled' && cancelReason) order.cancelReason = cancelReason;
+    order.statusHistory.push({ status, changedAt: new Date() });
     await order.save();
 
     // Start GPS tracking simulation when order starts shipping
