@@ -14,6 +14,7 @@ const reviewsRouter = require('./modules/reviews/reviews.router');
 const notificationsRouter = require('./modules/notifications/notifications.router');
 const storageRouter = require('./modules/storage/storage.router');
 const wishlistsRouter = require('./modules/wishlists/wishlists.router');
+const geographyRouter = require('./modules/geography/geography.router');
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use(`${API}/reviews`, reviewsRouter);
 app.use(`${API}/notifications`, notificationsRouter);
 app.use(`${API}/storage`, storageRouter);
 app.use(`${API}/wishlists`, wishlistsRouter);
+app.use(`${API}/geography`, geographyRouter);
 
 // Health check
 app.get(`${API}/health`, (_req, res) => res.json({ status: 'ok', time: new Date() }));
