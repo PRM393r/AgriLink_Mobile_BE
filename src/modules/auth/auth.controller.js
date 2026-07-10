@@ -15,9 +15,9 @@ const buildTokenPair = (user) => {
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 phút
 
 const generateOtpCode = () =>
-  process.env.NODE_ENV === 'production'
+  process.env.MAIL_USER
     ? Math.floor(100000 + Math.random() * 900000).toString()
-    : '123456'; // dev mock
+    : '123456'; // dev fallback khi chưa cấu hình mail
 
 // ─── POST /auth/register ──────────────────────────────────────────────────────
 // Bước 1: tạo tài khoản + gửi OTP verify email

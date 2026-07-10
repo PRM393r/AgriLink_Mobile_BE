@@ -1,6 +1,16 @@
 const Order = require('./order.model');
 const Product = require('../products/product.model');
 const { sendSuccess, sendError } = require('../../utils/response');
+const { createNotification } = require('../notifications/notifications.controller');
+const { startOrderTracking } = require('../tracking/tracking.socket');
+
+const STATUS_LABELS = {
+  confirmed:  'Đã xác nhận',
+  preparing:  'Đang chuẩn bị',
+  shipping:   'Đang giao hàng',
+  delivered:  'Đã giao hàng',
+  cancelled:  'Đã hủy',
+};
 
 // ─── POST /orders ────────────────────────────────────────────────────────────
 // TV3 task #2: Tạo đơn hàng từ cart
@@ -55,8 +65,14 @@ const createOrder = async (req, res) => {
       note,
     });
 
-    // TODO TV4: gửi notification cho seller sau khi có NotificationsService
-    // await createNotification(sellerId, 'order_created', `Bạn có đơn hàng mới #${order.orderCode}`)
+    // Notify seller: đơn hàng mới
+    createNotification(
+      sellerId.toString(),
+      'order_created',
+      'Đơn hàng mới',
+      `Bạn có đơn hàng mới #${order.orderCode} (${orderItems.length} sản phẩm)`,
+      { orderId: order._id.toString(), orderCode: order.orderCode }
+    ).catch(() => {});
 
     return sendSuccess(res, order.toObject(), 'Order created', 201);
   } catch (err) {
@@ -132,7 +148,20 @@ const updateStatus = async (req, res) => {
     if (status === 'cancelled' && cancelReason) order.cancelReason = cancelReason;
     await order.save();
 
-    // TODO TV4: gửi notification cho buyer khi status thay đổi
+    // Start GPS tracking simulation when order starts shipping
+    if (status === 'shipping') {
+      startOrderTracking(order._id.toString());
+    }
+
+    // Notify buyer: status thay đổi
+    const label = STATUS_LABELS[status] ?? status;
+    createNotification(
+      order.buyerId.toString(),
+      `order_${status}`,
+      `Đơn hàng ${label}`,
+      `Đơn hàng #${order.orderCode} của bạn đã ${label.toLowerCase()}.`,
+      { orderId: order._id.toString(), orderCode: order.orderCode, status }
+    ).catch(() => {});
 
     return sendSuccess(res, order.toObject(), 'Status updated');
   } catch (err) {
