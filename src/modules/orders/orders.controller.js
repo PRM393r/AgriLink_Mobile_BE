@@ -1,6 +1,16 @@
 const Order = require('./order.model');
 const Product = require('../products/product.model');
 const { sendSuccess, sendError } = require('../../utils/response');
+const { createNotification } = require('../notifications/notifications.controller');
+const { startOrderTracking } = require('../tracking/tracking.socket');
+
+const STATUS_LABELS = {
+  confirmed:  'Đã xác nhận',
+  preparing:  'Đang chuẩn bị',
+  shipping:   'Đang giao hàng',
+  delivered:  'Đã giao hàng',
+  cancelled:  'Đã hủy',
+};
 
 // ─── POST /orders ────────────────────────────────────────────────────────────
 // TV3 task #2: Tạo đơn hàng từ cart
@@ -53,10 +63,17 @@ const createOrder = async (req, res) => {
       totalAmount,
       paymentMethod,
       note,
+      statusHistory: [{ status: 'pending', changedAt: new Date() }],
     });
 
-    // TODO TV4: gửi notification cho seller sau khi có NotificationsService
-    // await createNotification(sellerId, 'order_created', `Bạn có đơn hàng mới #${order.orderCode}`)
+    // Notify seller: đơn hàng mới
+    createNotification(
+      sellerId.toString(),
+      'order_created',
+      'Đơn hàng mới',
+      `Bạn có đơn hàng mới #${order.orderCode} (${orderItems.length} sản phẩm)`,
+      { orderId: order._id.toString(), orderCode: order.orderCode }
+    ).catch(() => {});
 
     return sendSuccess(res, order.toObject(), 'Order created', 201);
   } catch (err) {
@@ -69,12 +86,22 @@ const createOrder = async (req, res) => {
 // Customer: xem đơn mình đặt. Seller: xem đơn mình nhận
 const getOrders = async (req, res) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
-    const role = req.user.role;
+    const { status, page = 1, limit = 20, role: queryRole } = req.query;
+    const userRole = req.user.role;
 
-    const filter = role === 'customer'
-      ? { buyerId: req.user.sub }
-      : { sellerId: req.user.sub };
+    // queryRole=buyer → luôn filter buyerId (farmer/supplier cũng có thể mua)
+    // queryRole=seller → filter sellerId
+    // Mặc định: customer → buyer, farmer/supplier → seller
+    let filter;
+    if (queryRole === 'buyer') {
+      filter = { buyerId: req.user.sub };
+    } else if (queryRole === 'seller') {
+      filter = { sellerId: req.user.sub };
+    } else {
+      filter = userRole === 'customer'
+        ? { buyerId: req.user.sub }
+        : { sellerId: req.user.sub };
+    }
 
     if (status) filter.status = status;
 
@@ -130,9 +157,23 @@ const updateStatus = async (req, res) => {
 
     order.status = status;
     if (status === 'cancelled' && cancelReason) order.cancelReason = cancelReason;
+    order.statusHistory.push({ status, changedAt: new Date() });
     await order.save();
 
-    // TODO TV4: gửi notification cho buyer khi status thay đổi
+    // Start GPS tracking simulation when order starts shipping
+    if (status === 'shipping') {
+      startOrderTracking(order._id.toString());
+    }
+
+    // Notify buyer: status thay đổi
+    const label = STATUS_LABELS[status] ?? status;
+    createNotification(
+      order.buyerId.toString(),
+      `order_${status}`,
+      `Đơn hàng ${label}`,
+      `Đơn hàng #${order.orderCode} của bạn đã ${label.toLowerCase()}.`,
+      { orderId: order._id.toString(), orderCode: order.orderCode, status }
+    ).catch(() => {});
 
     return sendSuccess(res, order.toObject(), 'Status updated');
   } catch (err) {

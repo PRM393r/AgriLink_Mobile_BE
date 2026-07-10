@@ -10,6 +10,7 @@ const bcrypt = require('bcryptjs');
 
 const User = require('./modules/users/user.model');
 const Product = require('./modules/products/product.model');
+const Order = require('./modules/orders/order.model');
 
 const MONGO_URI = process.env.MONGODB_URI;
 
@@ -439,9 +440,152 @@ async function seed() {
   console.log('🗑️  Cleared existing seed products');
 
   const products = PRODUCTS_TEMPLATE(farmerIds, supplierIds);
+  const createdProducts = [];
   for (const p of products) {
-    await Product.create(p);
+    const prod = await Product.create(p);
+    createdProducts.push(prod);
     console.log(`📦 Created product: ${p.name}`);
+  }
+
+  // ── Seed orders ──────────────────────────────────────────────────────────────
+  const customerIds = createdUsers.filter((u) => u.role === 'customer').map((u) => u._id);
+  const supplierProducts = createdProducts.filter((p) => p.sellerType === 'supplier');
+  const farmerProducts = createdProducts.filter((p) => p.sellerType === 'farmer');
+
+  await Order.deleteMany({ buyerId: { $in: customerIds } });
+  console.log('🗑️  Cleared existing seed orders');
+
+  const SEED_ORDERS = [
+    // customer1 mua từ supplier1
+    {
+      buyerId: customerIds[0],
+      sellerId: supplierProducts[0]?.sellerId,
+      items: [{
+        productId: supplierProducts[0]?._id,
+        productSnapshot: { name: supplierProducts[0]?.name, pricePerUnit: supplierProducts[0]?.pricePerUnit, unit: supplierProducts[0]?.unit, imageUrl: supplierProducts[0]?.images?.[0]?.url || '' },
+        quantity: 25, unitPrice: supplierProducts[0]?.pricePerUnit || 18000, totalPrice: (supplierProducts[0]?.pricePerUnit || 18000) * 25,
+      }],
+      shippingAddressSnapshot: { recipientName: 'Lê Văn Cường', phone: '0901234567', address: 'Hà Nội' },
+      subtotal: (supplierProducts[0]?.pricePerUnit || 18000) * 25,
+      shippingFee: 0,
+      totalAmount: (supplierProducts[0]?.pricePerUnit || 18000) * 25,
+      paymentMethod: 'cod',
+      status: 'pending',
+      statusHistory: [{ status: 'pending', changedAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }],
+    },
+    // customer2 mua từ supplier1
+    {
+      buyerId: customerIds[1],
+      sellerId: supplierProducts[0]?.sellerId,
+      items: [{
+        productId: supplierProducts[2]?._id,
+        productSnapshot: { name: supplierProducts[2]?.name, pricePerUnit: supplierProducts[2]?.pricePerUnit, unit: supplierProducts[2]?.unit, imageUrl: supplierProducts[2]?.images?.[0]?.url || '' },
+        quantity: 2, unitPrice: supplierProducts[2]?.pricePerUnit || 350000, totalPrice: (supplierProducts[2]?.pricePerUnit || 350000) * 2,
+      }],
+      shippingAddressSnapshot: { recipientName: 'Phạm Thị Dung', phone: '0912345678', address: 'TP. Hồ Chí Minh' },
+      subtotal: (supplierProducts[2]?.pricePerUnit || 350000) * 2,
+      shippingFee: 0,
+      totalAmount: (supplierProducts[2]?.pricePerUnit || 350000) * 2,
+      paymentMethod: 'cod',
+      status: 'confirmed',
+      statusHistory: [
+        { status: 'pending',   changedAt: new Date(Date.now() - 5 * 60 * 60 * 1000) },
+        { status: 'confirmed', changedAt: new Date(Date.now() - 4 * 60 * 60 * 1000) },
+      ],
+    },
+    // customer3 mua từ supplier2
+    {
+      buyerId: customerIds[2],
+      sellerId: supplierProducts[6]?.sellerId,
+      items: [{
+        productId: supplierProducts[6]?._id,
+        productSnapshot: { name: supplierProducts[6]?.name, pricePerUnit: supplierProducts[6]?.pricePerUnit, unit: supplierProducts[6]?.unit, imageUrl: supplierProducts[6]?.images?.[0]?.url || '' },
+        quantity: 1, unitPrice: supplierProducts[6]?.pricePerUnit || 1250000, totalPrice: supplierProducts[6]?.pricePerUnit || 1250000,
+      }],
+      shippingAddressSnapshot: { recipientName: 'Hoàng Văn Minh', phone: '0923456789', address: 'Đà Nẵng' },
+      subtotal: supplierProducts[6]?.pricePerUnit || 1250000,
+      shippingFee: 0,
+      totalAmount: supplierProducts[6]?.pricePerUnit || 1250000,
+      paymentMethod: 'cod',
+      status: 'preparing',
+      statusHistory: [
+        { status: 'pending',   changedAt: new Date(Date.now() - 8 * 60 * 60 * 1000) },
+        { status: 'confirmed', changedAt: new Date(Date.now() - 7 * 60 * 60 * 1000) },
+        { status: 'preparing', changedAt: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+      ],
+    },
+    // customer1 mua nông sản từ farmer1
+    {
+      buyerId: customerIds[0],
+      sellerId: farmerProducts[0]?.sellerId,
+      items: [{
+        productId: farmerProducts[0]?._id,
+        productSnapshot: { name: farmerProducts[0]?.name, pricePerUnit: farmerProducts[0]?.pricePerUnit, unit: farmerProducts[0]?.unit, imageUrl: farmerProducts[0]?.images?.[0]?.url || '' },
+        quantity: 2, unitPrice: farmerProducts[0]?.pricePerUnit || 180000, totalPrice: (farmerProducts[0]?.pricePerUnit || 180000) * 2,
+      }],
+      shippingAddressSnapshot: { recipientName: 'Lê Văn Cường', phone: '0901234567', address: 'Hà Nội' },
+      subtotal: (farmerProducts[0]?.pricePerUnit || 180000) * 2,
+      shippingFee: 0,
+      totalAmount: (farmerProducts[0]?.pricePerUnit || 180000) * 2,
+      paymentMethod: 'cod',
+      status: 'shipping',
+      statusHistory: [
+        { status: 'pending',   changedAt: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+        { status: 'confirmed', changedAt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        { status: 'preparing', changedAt: new Date(Date.now() - 20 * 60 * 60 * 1000) },
+        { status: 'shipping',  changedAt: new Date(Date.now() - 4 * 60 * 60 * 1000) },
+      ],
+    },
+    // customer2 mua từ farmer2
+    {
+      buyerId: customerIds[1],
+      sellerId: farmerProducts[6]?.sellerId,
+      items: [{
+        productId: farmerProducts[6]?._id,
+        productSnapshot: { name: farmerProducts[6]?.name, pricePerUnit: farmerProducts[6]?.pricePerUnit, unit: farmerProducts[6]?.unit, imageUrl: farmerProducts[6]?.images?.[0]?.url || '' },
+        quantity: 5, unitPrice: farmerProducts[6]?.pricePerUnit || 120000, totalPrice: (farmerProducts[6]?.pricePerUnit || 120000) * 5,
+      }],
+      shippingAddressSnapshot: { recipientName: 'Phạm Thị Dung', phone: '0912345678', address: 'TP. Hồ Chí Minh' },
+      subtotal: (farmerProducts[6]?.pricePerUnit || 120000) * 5,
+      shippingFee: 0,
+      totalAmount: (farmerProducts[6]?.pricePerUnit || 120000) * 5,
+      paymentMethod: 'cod',
+      status: 'delivered',
+      statusHistory: [
+        { status: 'pending',   changedAt: new Date(Date.now() - 50 * 60 * 60 * 1000) },
+        { status: 'confirmed', changedAt: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+        { status: 'preparing', changedAt: new Date(Date.now() - 36 * 60 * 60 * 1000) },
+        { status: 'shipping',  changedAt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        { status: 'delivered', changedAt: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+      ],
+    },
+    // cancelled order — supplier1
+    {
+      buyerId: customerIds[0],
+      sellerId: supplierProducts[1]?.sellerId,
+      items: [{
+        productId: supplierProducts[1]?._id,
+        productSnapshot: { name: supplierProducts[1]?.name, pricePerUnit: supplierProducts[1]?.pricePerUnit, unit: supplierProducts[1]?.unit, imageUrl: supplierProducts[1]?.images?.[0]?.url || '' },
+        quantity: 40, unitPrice: supplierProducts[1]?.pricePerUnit || 8000, totalPrice: (supplierProducts[1]?.pricePerUnit || 8000) * 40,
+      }],
+      shippingAddressSnapshot: { recipientName: 'Lê Văn Cường', phone: '0901234567', address: 'Hà Nội' },
+      subtotal: (supplierProducts[1]?.pricePerUnit || 8000) * 40,
+      shippingFee: 0,
+      totalAmount: (supplierProducts[1]?.pricePerUnit || 8000) * 40,
+      paymentMethod: 'cod',
+      status: 'cancelled',
+      cancelReason: 'Khách hàng đổi ý, không còn nhu cầu',
+      statusHistory: [
+        { status: 'pending',   changedAt: new Date(Date.now() - 10 * 60 * 60 * 1000) },
+        { status: 'cancelled', changedAt: new Date(Date.now() - 9 * 60 * 60 * 1000) },
+      ],
+    },
+  ];
+
+  for (const o of SEED_ORDERS) {
+    if (!o.sellerId) continue;
+    const order = await Order.create(o);
+    console.log(`🛒 Created order: ${order.orderCode} (${o.status})`);
   }
 
   console.log('\n✅ Seed hoàn tất!');

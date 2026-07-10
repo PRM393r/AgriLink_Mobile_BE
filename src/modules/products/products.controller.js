@@ -34,6 +34,7 @@ const getProducts = async (req, res) => {
         .sort({ [sortBy]: sortOrder })
         .skip(skip)
         .limit(Number(limit))
+        .populate('sellerId', 'fullName')
         .lean(),
       Product.countDocuments(filter),
     ]);
