@@ -12,6 +12,7 @@ const User = require('./modules/users/user.model');
 const Product = require('./modules/products/product.model');
 const Order = require('./modules/orders/order.model');
 const MarketPrice = require('./modules/market-prices/market-price.model');
+const Trace = require('./modules/trace/trace.model');
 
 const MONGO_URI = process.env.MONGODB_URI;
 
@@ -23,6 +24,36 @@ const MARKET_PRICES = [
   { productName: 'Gạo ST25', category: 'Lúa gạo', region: 'Đồng bằng sông Cửu Long', province: 'Sóc Trăng', unit: 'kg', price: 28500, previousPrice: 28000, source: 'Chợ nông sản Sóc Trăng' },
   { productName: 'Thanh long ruột đỏ', category: 'Trái cây', region: 'Nam Trung Bộ', province: 'Bình Thuận', unit: 'kg', price: 34000, previousPrice: 36000, source: 'Sở Công Thương Bình Thuận' },
 ].map((item) => ({ ...item, recordedAt: new Date() }));
+
+const TRACE_RECORDS = [
+  {
+    traceCode: 'AGL-TOMATO-001', productName: 'Cà chua Beef Đà Lạt', batchCode: 'DL-CT-20260701',
+    imageUrl: 'https://images.unsplash.com/photo-1546470427-e5ac89cd0b31?w=800',
+    farmerName: 'Nguyễn Văn An', farmName: 'Nông trại Xanh Đà Lạt', origin: 'Đơn Dương, Lâm Đồng',
+    farmingMethod: 'VietGAP - canh tác nhà kính', certification: 'VietGAP',
+    harvestDate: new Date('2026-07-08'), expiryDate: new Date('2026-07-18'),
+    timeline: [
+      { title: 'Gieo trồng', description: 'Ươm giống cà chua Beef F1', location: 'Đơn Dương, Lâm Đồng', occurredAt: new Date('2026-04-10') },
+      { title: 'Chăm sóc', description: 'Tưới nhỏ giọt và bón phân hữu cơ', location: 'Nông trại Xanh Đà Lạt', occurredAt: new Date('2026-05-20') },
+      { title: 'Kiểm định', description: 'Đạt tiêu chuẩn dư lượng và an toàn thực phẩm', location: 'Trung tâm VietGAP Lâm Đồng', occurredAt: new Date('2026-07-07') },
+      { title: 'Thu hoạch', description: 'Thu hoạch và phân loại tại vườn', location: 'Nông trại Xanh Đà Lạt', occurredAt: new Date('2026-07-08') },
+      { title: 'Đóng gói', description: 'Đóng gói thùng 5kg, bảo quản mát', location: 'Đà Lạt, Lâm Đồng', occurredAt: new Date('2026-07-09') },
+    ],
+  },
+  {
+    traceCode: 'AGL-DURIAN-001', productName: 'Sầu riêng Ri6', batchCode: 'TG-SR-20260628',
+    imageUrl: 'https://images.unsplash.com/photo-1604480132736-44c188fe4d20?w=800',
+    farmerName: 'Trần Thị Bình', farmName: 'Vườn cây Bình Minh', origin: 'Cai Lậy, Tiền Giang',
+    farmingMethod: 'Canh tác hữu cơ', certification: 'OCOP 4 sao',
+    harvestDate: new Date('2026-06-28'), expiryDate: new Date('2026-07-15'),
+    timeline: [
+      { title: 'Ra hoa', description: 'Theo dõi và tuyển chọn hoa khỏe', location: 'Cai Lậy, Tiền Giang', occurredAt: new Date('2026-02-18') },
+      { title: 'Chăm sóc', description: 'Bón phân hữu cơ và quản lý sâu bệnh', location: 'Vườn cây Bình Minh', occurredAt: new Date('2026-04-15') },
+      { title: 'Thu hoạch', description: 'Thu hoạch trái đạt độ chín tiêu chuẩn', location: 'Cai Lậy, Tiền Giang', occurredAt: new Date('2026-06-28') },
+      { title: 'Đóng gói', description: 'Kiểm tra, dán tem truy xuất và đóng thùng', location: 'Tiền Giang', occurredAt: new Date('2026-06-29') },
+    ],
+  },
+];
 
 // ─── Demo users ───────────────────────────────────────────────────────────────
 const USERS = [
@@ -434,6 +465,10 @@ async function seed() {
   await MarketPrice.deleteMany({});
   await MarketPrice.insertMany(MARKET_PRICES);
   console.log(`Seeded ${MARKET_PRICES.length} market prices`);
+
+  await Trace.deleteMany({});
+  await Trace.insertMany(TRACE_RECORDS);
+  console.log(`Seeded ${TRACE_RECORDS.length} trace records`);
 
   const seedEmails = USERS.map((u) => u.email);
   await User.deleteMany({ email: { $in: seedEmails } });
