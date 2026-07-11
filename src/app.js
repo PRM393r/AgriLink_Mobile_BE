@@ -17,6 +17,7 @@ const notificationsRouter = require('./modules/notifications/notifications.route
 const storageRouter = require('./modules/storage/storage.router');
 const wishlistsRouter = require('./modules/wishlists/wishlists.router');
 const geographyRouter = require('./modules/geography/geography.router');
+const marketPricesRouter = require('./modules/market-prices/market-prices.router');
 
 const app = express();
 const server = http.createServer(app);
@@ -43,6 +44,7 @@ app.use(`${API}/notifications`, notificationsRouter);
 app.use(`${API}/storage`, storageRouter);
 app.use(`${API}/wishlists`, wishlistsRouter);
 app.use(`${API}/geography`, geographyRouter);
+app.use(`${API}/market-prices`, marketPricesRouter);
 
 app.get(`${API}/health`, (_req, res) => res.json({ status: 'ok', time: new Date() }));
 

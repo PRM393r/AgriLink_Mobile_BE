@@ -11,8 +11,18 @@ const bcrypt = require('bcryptjs');
 const User = require('./modules/users/user.model');
 const Product = require('./modules/products/product.model');
 const Order = require('./modules/orders/order.model');
+const MarketPrice = require('./modules/market-prices/market-price.model');
 
 const MONGO_URI = process.env.MONGODB_URI;
+
+const MARKET_PRICES = [
+  { productName: 'Cà chua', category: 'Rau củ', region: 'Tây Nguyên', province: 'Lâm Đồng', unit: 'kg', price: 25000, previousPrice: 23500, source: 'Chợ đầu mối Đà Lạt' },
+  { productName: 'Khoai tây', category: 'Rau củ', region: 'Tây Nguyên', province: 'Lâm Đồng', unit: 'kg', price: 32000, previousPrice: 32500, source: 'Chợ đầu mối Đà Lạt' },
+  { productName: 'Sầu riêng Ri6', category: 'Trái cây', region: 'Nam Bộ', province: 'Tiền Giang', unit: 'kg', price: 125000, previousPrice: 125000, source: 'Sở Công Thương Tiền Giang' },
+  { productName: 'Cà phê Robusta', category: 'Nông sản', region: 'Tây Nguyên', province: 'Đắk Lắk', unit: 'kg', price: 112500, previousPrice: 110000, source: 'Sở Giao dịch Hàng hóa Việt Nam' },
+  { productName: 'Gạo ST25', category: 'Lúa gạo', region: 'Đồng bằng sông Cửu Long', province: 'Sóc Trăng', unit: 'kg', price: 28500, previousPrice: 28000, source: 'Chợ nông sản Sóc Trăng' },
+  { productName: 'Thanh long ruột đỏ', category: 'Trái cây', region: 'Nam Trung Bộ', province: 'Bình Thuận', unit: 'kg', price: 34000, previousPrice: 36000, source: 'Sở Công Thương Bình Thuận' },
+].map((item) => ({ ...item, recordedAt: new Date() }));
 
 // ─── Demo users ───────────────────────────────────────────────────────────────
 const USERS = [
@@ -420,6 +430,10 @@ async function seed() {
   console.log('🌱 Connecting to MongoDB...');
   await mongoose.connect(MONGO_URI);
   console.log('✅ Connected');
+
+  await MarketPrice.deleteMany({});
+  await MarketPrice.insertMany(MARKET_PRICES);
+  console.log(`Seeded ${MARKET_PRICES.length} market prices`);
 
   const seedEmails = USERS.map((u) => u.email);
   await User.deleteMany({ email: { $in: seedEmails } });
