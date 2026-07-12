@@ -18,6 +18,23 @@ const updateMe = async (req, res) => {
     for (const key of allowed) {
       if (req.body[key] !== undefined) update[key] = req.body[key];
     }
+    const currentUser = await User.findById(req.user.sub).lean();
+    if (!currentUser) return sendError(res, 404, 'User not found');
+    if (req.body.bankInfo !== undefined) {
+      if (!['farmer', 'supplier'].includes(currentUser.role)) {
+        return sendError(res, 403, 'Only farmer or supplier can update bank information');
+      }
+      const { bankCode = '', accountNumber = '', accountName = '' } = req.body.bankInfo;
+      if (bankCode || accountNumber || accountName) {
+        if (!bankCode || !accountNumber || !accountName) {
+          return sendError(res, 400, 'bankCode, accountNumber and accountName are required');
+        }
+        if (!/^\d{6,20}$/.test(accountNumber)) {
+          return sendError(res, 400, 'Invalid bank account number');
+        }
+      }
+      update.bankInfo = { bankCode, accountNumber, accountName };
+    }
     const user = await User.findByIdAndUpdate(req.user.sub, update, { new: true, lean: true });
     if (!user) return sendError(res, 404, 'User not found');
     return sendSuccess(res, user);

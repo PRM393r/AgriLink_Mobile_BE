@@ -77,7 +77,7 @@ describe('POST /api/v1/orders', () => {
 
     const notif = await Notification.findOne({ userId: seller.userId, type: 'order_created' });
     expect(notif).not.toBeNull();
-    expect(notif.title).toBe('Đơn hàng mới');
+    expect(notif.title).toBe('Có khách đặt hàng');
   });
 
   test('returns 400 if items empty', async () => {

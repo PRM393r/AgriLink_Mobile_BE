@@ -13,8 +13,58 @@ const Product = require('./modules/products/product.model');
 const Order = require('./modules/orders/order.model');
 const Review = require('./modules/reviews/review.model');
 const Wishlist = require('./modules/wishlists/wishlist.model');
+const MarketPrice = require('./modules/market-prices/market-price.model');
+const Trace = require('./modules/trace/trace.model');
+const Notification = require('./modules/notifications/notification.model');
 
 const MONGO_URI = process.env.MONGODB_URI;
+
+// Tạm dùng chung tài khoản nhận tiền cho toàn bộ seller demo.
+// Thay lại theo từng thành viên khi có thông tin chính thức.
+const DEFAULT_SELLER_BANK_INFO = {
+  bankCode: 'MB',
+  accountNumber: '0982060446',
+  accountName: 'PHAM NGOC HOANG ANH',
+};
+
+const MARKET_PRICES = [
+  { productName: 'Cà chua', category: 'Rau củ', region: 'Tây Nguyên', province: 'Lâm Đồng', unit: 'kg', price: 25000, previousPrice: 23500, source: 'Chợ đầu mối Đà Lạt' },
+  { productName: 'Khoai tây', category: 'Rau củ', region: 'Tây Nguyên', province: 'Lâm Đồng', unit: 'kg', price: 32000, previousPrice: 32500, source: 'Chợ đầu mối Đà Lạt' },
+  { productName: 'Sầu riêng Ri6', category: 'Trái cây', region: 'Nam Bộ', province: 'Tiền Giang', unit: 'kg', price: 125000, previousPrice: 125000, source: 'Sở Công Thương Tiền Giang' },
+  { productName: 'Cà phê Robusta', category: 'Nông sản', region: 'Tây Nguyên', province: 'Đắk Lắk', unit: 'kg', price: 112500, previousPrice: 110000, source: 'Sở Giao dịch Hàng hóa Việt Nam' },
+  { productName: 'Gạo ST25', category: 'Lúa gạo', region: 'Đồng bằng sông Cửu Long', province: 'Sóc Trăng', unit: 'kg', price: 28500, previousPrice: 28000, source: 'Chợ nông sản Sóc Trăng' },
+  { productName: 'Thanh long ruột đỏ', category: 'Trái cây', region: 'Nam Trung Bộ', province: 'Bình Thuận', unit: 'kg', price: 34000, previousPrice: 36000, source: 'Sở Công Thương Bình Thuận' },
+].map((item) => ({ ...item, recordedAt: new Date() }));
+
+const TRACE_RECORDS = [
+  {
+    traceCode: 'AGL-TOMATO-001', productName: 'Cà chua Beef Đà Lạt', batchCode: 'DL-CT-20260701',
+    imageUrl: 'https://images.unsplash.com/photo-1546470427-e5ac89cd0b31?w=800',
+    farmerName: 'Nguyễn Văn An', farmName: 'Nông trại Xanh Đà Lạt', origin: 'Đơn Dương, Lâm Đồng',
+    farmingMethod: 'VietGAP - canh tác nhà kính', certification: 'VietGAP',
+    harvestDate: new Date('2026-07-08'), expiryDate: new Date('2026-07-18'),
+    timeline: [
+      { title: 'Gieo trồng', description: 'Ươm giống cà chua Beef F1', location: 'Đơn Dương, Lâm Đồng', occurredAt: new Date('2026-04-10') },
+      { title: 'Chăm sóc', description: 'Tưới nhỏ giọt và bón phân hữu cơ', location: 'Nông trại Xanh Đà Lạt', occurredAt: new Date('2026-05-20') },
+      { title: 'Kiểm định', description: 'Đạt tiêu chuẩn dư lượng và an toàn thực phẩm', location: 'Trung tâm VietGAP Lâm Đồng', occurredAt: new Date('2026-07-07') },
+      { title: 'Thu hoạch', description: 'Thu hoạch và phân loại tại vườn', location: 'Nông trại Xanh Đà Lạt', occurredAt: new Date('2026-07-08') },
+      { title: 'Đóng gói', description: 'Đóng gói thùng 5kg, bảo quản mát', location: 'Đà Lạt, Lâm Đồng', occurredAt: new Date('2026-07-09') },
+    ],
+  },
+  {
+    traceCode: 'AGL-DURIAN-001', productName: 'Sầu riêng Ri6', batchCode: 'TG-SR-20260628',
+    imageUrl: 'https://images.unsplash.com/photo-1604480132736-44c188fe4d20?w=800',
+    farmerName: 'Trần Thị Bình', farmName: 'Vườn cây Bình Minh', origin: 'Cai Lậy, Tiền Giang',
+    farmingMethod: 'Canh tác hữu cơ', certification: 'OCOP 4 sao',
+    harvestDate: new Date('2026-06-28'), expiryDate: new Date('2026-07-15'),
+    timeline: [
+      { title: 'Ra hoa', description: 'Theo dõi và tuyển chọn hoa khỏe', location: 'Cai Lậy, Tiền Giang', occurredAt: new Date('2026-02-18') },
+      { title: 'Chăm sóc', description: 'Bón phân hữu cơ và quản lý sâu bệnh', location: 'Vườn cây Bình Minh', occurredAt: new Date('2026-04-15') },
+      { title: 'Thu hoạch', description: 'Thu hoạch trái đạt độ chín tiêu chuẩn', location: 'Cai Lậy, Tiền Giang', occurredAt: new Date('2026-06-28') },
+      { title: 'Đóng gói', description: 'Kiểm tra, dán tem truy xuất và đóng thùng', location: 'Tiền Giang', occurredAt: new Date('2026-06-29') },
+    ],
+  },
+];
 
 // ─── Demo users ───────────────────────────────────────────────────────────────
 const USERS = [
@@ -495,23 +545,65 @@ async function seed() {
   await mongoose.connect(MONGO_URI);
   console.log('✅ Connected');
 
+  await MarketPrice.deleteMany({});
+  await MarketPrice.insertMany(MARKET_PRICES);
+  console.log(`Seeded ${MARKET_PRICES.length} market prices`);
+
+  await Trace.deleteMany({});
+  await Trace.insertMany(TRACE_RECORDS);
+  console.log(`Seeded ${TRACE_RECORDS.length} trace records`);
+
   const seedEmails = USERS.map((u) => u.email);
+  const existingSeedUsers = await User.find({ email: { $in: seedEmails } })
+    .select('_id role')
+    .lean();
+  const existingSeedUserIds = existingSeedUsers.map((user) => user._id);
+  const existingSeedSellerIds = existingSeedUsers
+    .filter((user) => user.role === 'farmer' || user.role === 'supplier')
+    .map((user) => user._id);
+
+  // Chỉ dọn dữ liệu thuộc demo users hiện tại.
+  if (existingSeedUserIds.length) {
+    await Notification.deleteMany({ userId: { $in: existingSeedUserIds } });
+    await Order.deleteMany({
+      $or: [
+        { buyerId: { $in: existingSeedUserIds } },
+        { sellerId: { $in: existingSeedUserIds } },
+      ],
+    });
+  }
+  if (existingSeedSellerIds.length) {
+    await Product.deleteMany({ sellerId: { $in: existingSeedSellerIds } });
+  }
+
+  // Dọn riêng product mồ côi do các lần seed cũ, không xóa product hợp lệ.
+  const validSellerIds = await User.find({ role: { $in: ['farmer', 'supplier'] } })
+    .distinct('_id');
+  const orphanProducts = await Product.find({ sellerId: { $nin: validSellerIds } })
+    .select('_id')
+    .lean();
+  if (orphanProducts.length) {
+    await Product.deleteMany({ _id: { $in: orphanProducts.map((product) => product._id) } });
+  }
+  console.log('🗑️  Cleared existing demo data and orphan products');
   await User.deleteMany({ email: { $in: seedEmails } });
   console.log('🗑️  Cleared existing demo users');
 
   const createdUsers = [];
   for (const u of USERS) {
     const passwordHash = await bcrypt.hash(u.password, 10);
-    const user = await User.create({ ...u, passwordHash });
+    const isSeller = u.role === 'farmer' || u.role === 'supplier';
+    const user = await User.create({
+      ...u,
+      passwordHash,
+      ...(isSeller ? { bankInfo: DEFAULT_SELLER_BANK_INFO } : {}),
+    });
     createdUsers.push(user);
     console.log(`👤 Created: ${u.email} (${u.role})`);
   }
 
   const farmerIds = createdUsers.filter((u) => u.role === 'farmer').map((u) => u._id);
   const supplierIds = createdUsers.filter((u) => u.role === 'supplier').map((u) => u._id);
-
-  await Product.deleteMany({ sellerId: { $in: [...farmerIds, ...supplierIds] } });
-  console.log('🗑️  Cleared existing seed products');
 
   const products = PRODUCTS_TEMPLATE(farmerIds, supplierIds);
   const createdProducts = [];
@@ -710,10 +802,49 @@ async function seed() {
     .filter(Boolean);
   ordersToCreate = topUpToMinimum(ordersToCreate, sellerUsers, customerUsers, productsBySeller);
 
+  await Notification.deleteMany({ userId: { $in: [...customerUsers, ...sellerUsers].map((u) => u._id) } });
+  console.log('🗑️  Cleared existing seed notifications');
+
+  const STATUS_LABEL_VN = {
+    pending: 'đang chờ xác nhận',
+    confirmed: 'đã được xác nhận',
+    preparing: 'đang chuẩn bị',
+    shipping: 'đang giao hàng',
+    delivered: 'đã giao hàng',
+    cancelled: 'đã hủy',
+  };
+  const STATUS_NOTIFICATION_TYPE = {
+    pending: 'order_created',
+    confirmed: 'order_confirmed',
+    preparing: 'order_confirmed',
+    shipping: 'order_shipping',
+    delivered: 'order_delivered',
+    cancelled: 'order_cancelled',
+  };
+
   const createdOrders = [];
   for (const o of ordersToCreate) {
     const order = await Order.create(o);
     createdOrders.push(order);
+
+    await Promise.all([
+      Notification.create({
+        userId: o.buyerId,
+        type: STATUS_NOTIFICATION_TYPE[o.status] || 'system',
+        title: o.status === 'pending' ? 'Đặt hàng thành công' : 'Cập nhật đơn hàng',
+        body: `Đơn hàng #${order.orderCode} ${STATUS_LABEL_VN[o.status] || o.status}.`,
+        data: { orderId: order._id.toString(), orderCode: order.orderCode, status: o.status },
+        isRead: false,
+      }),
+      Notification.create({
+        userId: o.sellerId,
+        type: 'order_created',
+        title: 'Có khách đặt hàng',
+        body: `Bạn có đơn hàng mới #${order.orderCode} (${o.items.length} sản phẩm).`,
+        data: { orderId: order._id.toString(), orderCode: order.orderCode, status: o.status },
+        isRead: false,
+      }),
+    ]);
   }
   console.log(`🛒 Created ${createdOrders.length} orders`);
 
