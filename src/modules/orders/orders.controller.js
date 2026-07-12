@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Order = require('./order.model');
 const Product = require('../products/product.model');
 const User = require('../users/user.model');
@@ -15,6 +16,8 @@ const STATUS_LABELS = {
 
 // ─── POST /orders ────────────────────────────────────────────────────────────
 // TV3 task #2: Tạo đơn hàng từ cart
+// Cart có thể chứa sản phẩm của nhiều seller khác nhau → group theo sellerId,
+// mỗi seller tạo 1 order riêng. Đồng thời validate + trừ tồn kho.
 const createOrder = async (req, res) => {
   try {
     const { items, shippingAddressSnapshot, note, paymentMethod = 'cod' } = req.body;
@@ -22,11 +25,19 @@ const createOrder = async (req, res) => {
     if (!items || !items.length) return sendError(res, 400, 'items is required');
     if (!shippingAddressSnapshot?.address) return sendError(res, 400, 'shippingAddressSnapshot.address is required');
 
+    // Load toàn bộ product liên quan, validate tồn tại + đủ tồn kho trước khi ghi gì
+    const products = await Product.find({ _id: { $in: items.map((i) => i.productId) } });
+    const productMap = new Map(products.map((p) => [p._id.toString(), p]));
+
     // Nhóm sản phẩm theo seller: một checkout có thể tạo nhiều order con.
     const groups = new Map();
     for (const item of items) {
-      const product = await Product.findById(item.productId).lean();
+      const product = productMap.get(item.productId.toString());
       if (!product) return sendError(res, 404, `Product ${item.productId} not found`);
+      if (product.availableQuantity < item.quantity) {
+        return sendError(res, 400, `Sản phẩm "${product.name}" chỉ còn ${product.availableQuantity} ${product.unit}`);
+      }
+
       const unitPrice = product.pricePerUnit;
       const totalPrice = unitPrice * item.quantity;
       const sellerId = product.sellerId.toString();
@@ -82,6 +93,14 @@ const createOrder = async (req, res) => {
         note,
         statusHistory: [{ status: 'pending', changedAt: new Date() }],
       });
+
+      // Trừ tồn kho sau khi order tạo thành công
+      for (const item of group.items) {
+        await Product.findByIdAndUpdate(item.productId, {
+          $inc: { availableQuantity: -item.quantity },
+        });
+      }
+
       await Promise.all([
         createNotification(
           group.sellerId,
@@ -181,8 +200,34 @@ const updateStatus = async (req, res) => {
 
     const order = await Order.findById(req.params.id);
     if (!order) return sendError(res, 404, 'Order not found');
-    if (order.sellerId.toString() !== req.user.sub) {
+
+    const isSeller = order.sellerId.toString() === req.user.sub;
+    const isBuyer = order.buyerId.toString() === req.user.sub;
+
+    // Buyer chỉ được phép tự hủy đơn khi còn 'pending'; mọi transition khác là của seller
+    if (isBuyer && !isSeller) {
+      if (status !== 'cancelled') {
+        return sendError(res, 403, 'Forbidden: chỉ có thể hủy đơn hàng');
+      }
+      if (order.status !== 'pending') {
+        return sendError(res, 400, 'Chỉ có thể hủy đơn khi đang chờ xác nhận');
+      }
+    } else if (!isSeller) {
       return sendError(res, 403, 'Forbidden: not your order');
+    }
+
+    // Hàng đã giao cho shipper hoặc đã giao xong thì không thể hủy nữa
+    if (status === 'cancelled' && ['shipping', 'delivered'].includes(order.status)) {
+      return sendError(res, 400, 'Không thể hủy đơn đang giao hoặc đã giao');
+    }
+
+    // Hoàn lại tồn kho khi hủy đơn
+    if (status === 'cancelled' && order.status !== 'cancelled') {
+      for (const item of order.items) {
+        await Product.findByIdAndUpdate(item.productId, {
+          $inc: { availableQuantity: item.quantity },
+        });
+      }
     }
 
     order.status = status;
@@ -245,11 +290,13 @@ const confirmPayment = async (req, res) => {
 const getSellerStats = async (req, res) => {
   try {
     const sellerId = req.user.sub;
+    const sellerObjectId = new mongoose.Types.ObjectId(sellerId);
 
     const [totalRevenueResult, totalOrders, pendingOrders, totalProducts] = await Promise.all([
       // Tổng doanh thu từ các đơn hàng 'delivered'
+      // aggregate() không tự cast string -> ObjectId như find(), phải convert thủ công
       Order.aggregate([
-        { $match: { sellerId, status: 'delivered' } },
+        { $match: { sellerId: sellerObjectId, status: 'delivered' } },
         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
       ]),
       // Tổng số đơn hàng
@@ -276,7 +323,7 @@ const getSellerStats = async (req, res) => {
 // ─── GET /orders/seller-stats/monthly ───────────────────────────────────────────
 const getMonthlyRevenue = async (req, res) => {
   try {
-    const sellerId = req.user.sub;
+    const sellerId = new mongoose.Types.ObjectId(req.user.sub);
     const { type } = req.query; // 'daily' or 'monthly'
     const now = new Date();
     const currentYear = now.getFullYear();

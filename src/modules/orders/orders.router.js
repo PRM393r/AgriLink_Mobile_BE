@@ -8,7 +8,9 @@ router.get('/', authenticate, ctrl.getOrders);                                  
 router.get('/seller-stats', authenticate, authorize('farmer', 'supplier'), ctrl.getSellerStats);
 router.get('/seller-stats/monthly', authenticate, authorize('farmer', 'supplier'), ctrl.getMonthlyRevenue);
 router.get('/:id', authenticate, ctrl.getOrderById);                              // TV3 task #5
-router.patch('/:id/status', authenticate, authorize('farmer', 'supplier'), ctrl.updateStatus); // TV3 task #6
+// Seller (farmer/supplier) chuyển trạng thái đơn; customer chỉ được tự hủy đơn 'pending'
+// — phân quyền chi tiết theo buyer/seller nằm trong controller.
+router.patch('/:id/status', authenticate, authorize('farmer', 'supplier', 'customer'), ctrl.updateStatus); // TV3 task #6
 router.patch('/:id/payment-confirm', authenticate, authorize('customer'), ctrl.confirmPayment);
 
 module.exports = router;
