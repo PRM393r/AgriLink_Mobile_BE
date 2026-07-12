@@ -13,8 +13,17 @@ const Product = require('./modules/products/product.model');
 const Order = require('./modules/orders/order.model');
 const MarketPrice = require('./modules/market-prices/market-price.model');
 const Trace = require('./modules/trace/trace.model');
+const Notification = require('./modules/notifications/notification.model');
 
 const MONGO_URI = process.env.MONGODB_URI;
+
+// Tạm dùng chung tài khoản nhận tiền cho toàn bộ seller demo.
+// Thay lại theo từng thành viên khi có thông tin chính thức.
+const DEFAULT_SELLER_BANK_INFO = {
+  bankCode: 'MB',
+  accountNumber: '0982060446',
+  accountName: 'PHAM NGOC HOANG ANH',
+};
 
 const MARKET_PRICES = [
   { productName: 'Cà chua', category: 'Rau củ', region: 'Tây Nguyên', province: 'Lâm Đồng', unit: 'kg', price: 25000, previousPrice: 23500, source: 'Chợ đầu mối Đà Lạt' },
@@ -471,22 +480,56 @@ async function seed() {
   console.log(`Seeded ${TRACE_RECORDS.length} trace records`);
 
   const seedEmails = USERS.map((u) => u.email);
+  const existingSeedUsers = await User.find({ email: { $in: seedEmails } })
+    .select('_id role')
+    .lean();
+  const existingSeedUserIds = existingSeedUsers.map((user) => user._id);
+  const existingSeedSellerIds = existingSeedUsers
+    .filter((user) => user.role === 'farmer' || user.role === 'supplier')
+    .map((user) => user._id);
+
+  // Chỉ dọn dữ liệu thuộc demo users hiện tại.
+  if (existingSeedUserIds.length) {
+    await Notification.deleteMany({ userId: { $in: existingSeedUserIds } });
+    await Order.deleteMany({
+      $or: [
+        { buyerId: { $in: existingSeedUserIds } },
+        { sellerId: { $in: existingSeedUserIds } },
+      ],
+    });
+  }
+  if (existingSeedSellerIds.length) {
+    await Product.deleteMany({ sellerId: { $in: existingSeedSellerIds } });
+  }
+
+  // Dọn riêng product mồ côi do các lần seed cũ, không xóa product hợp lệ.
+  const validSellerIds = await User.find({ role: { $in: ['farmer', 'supplier'] } })
+    .distinct('_id');
+  const orphanProducts = await Product.find({ sellerId: { $nin: validSellerIds } })
+    .select('_id')
+    .lean();
+  if (orphanProducts.length) {
+    await Product.deleteMany({ _id: { $in: orphanProducts.map((product) => product._id) } });
+  }
+  console.log('🗑️  Cleared existing demo data and orphan products');
   await User.deleteMany({ email: { $in: seedEmails } });
   console.log('🗑️  Cleared existing demo users');
 
   const createdUsers = [];
   for (const u of USERS) {
     const passwordHash = await bcrypt.hash(u.password, 10);
-    const user = await User.create({ ...u, passwordHash });
+    const isSeller = u.role === 'farmer' || u.role === 'supplier';
+    const user = await User.create({
+      ...u,
+      passwordHash,
+      ...(isSeller ? { bankInfo: DEFAULT_SELLER_BANK_INFO } : {}),
+    });
     createdUsers.push(user);
     console.log(`👤 Created: ${u.email} (${u.role})`);
   }
 
   const farmerIds = createdUsers.filter((u) => u.role === 'farmer').map((u) => u._id);
   const supplierIds = createdUsers.filter((u) => u.role === 'supplier').map((u) => u._id);
-
-  await Product.deleteMany({ sellerId: { $in: [...farmerIds, ...supplierIds] } });
-  console.log('🗑️  Cleared existing seed products');
 
   const products = PRODUCTS_TEMPLATE(farmerIds, supplierIds);
   const createdProducts = [];
@@ -500,9 +543,6 @@ async function seed() {
   const customerIds = createdUsers.filter((u) => u.role === 'customer').map((u) => u._id);
   const supplierProducts = createdProducts.filter((p) => p.sellerType === 'supplier');
   const farmerProducts = createdProducts.filter((p) => p.sellerType === 'farmer');
-
-  await Order.deleteMany({ buyerId: { $in: customerIds } });
-  console.log('🗑️  Cleared existing seed orders');
 
   const SEED_ORDERS = [
     // customer1 mua từ supplier1
@@ -634,6 +674,40 @@ async function seed() {
   for (const o of SEED_ORDERS) {
     if (!o.sellerId) continue;
     const order = await Order.create(o);
+    const statusLabel = {
+      pending: 'đang chờ xác nhận',
+      confirmed: 'đã được xác nhận',
+      preparing: 'đang chuẩn bị',
+      shipping: 'đang giao hàng',
+      delivered: 'đã giao hàng',
+      cancelled: 'đã hủy',
+    }[o.status] || o.status;
+    const notificationType = {
+      pending: 'order_created',
+      confirmed: 'order_confirmed',
+      preparing: 'order_confirmed',
+      shipping: 'order_shipping',
+      delivered: 'order_delivered',
+      cancelled: 'order_cancelled',
+    }[o.status] || 'system';
+    await Promise.all([
+      Notification.create({
+        userId: o.buyerId,
+        type: notificationType,
+        title: o.status === 'pending' ? 'Đặt hàng thành công' : 'Cập nhật đơn hàng',
+        body: `Đơn hàng #${order.orderCode} ${statusLabel}.`,
+        data: { orderId: order._id.toString(), orderCode: order.orderCode, status: o.status },
+        isRead: false,
+      }),
+      Notification.create({
+        userId: o.sellerId,
+        type: 'order_created',
+        title: 'Có khách đặt hàng',
+        body: `Bạn có đơn hàng mới #${order.orderCode} (${o.items.length} sản phẩm).`,
+        data: { orderId: order._id.toString(), orderCode: order.orderCode, status: o.status },
+        isRead: false,
+      }),
+    ]);
     console.log(`🛒 Created order: ${order.orderCode} (${o.status})`);
   }
 
