@@ -14,6 +14,11 @@ const userSchema = new mongoose.Schema(
     fullName: { type: String, trim: true, default: '' },
     avatarUrl: { type: String, default: '' },
     address: { type: String, default: '' },
+    bankInfo: {
+      bankCode: { type: String, trim: true, uppercase: true, default: '' },
+      accountNumber: { type: String, trim: true, default: '' },
+      accountName: { type: String, trim: true, uppercase: true, default: '' },
+    },
     isVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     refreshTokenHash: { type: String, select: false },

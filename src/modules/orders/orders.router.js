@@ -9,5 +9,6 @@ router.get('/seller-stats', authenticate, authorize('farmer', 'supplier'), ctrl.
 router.get('/seller-stats/monthly', authenticate, authorize('farmer', 'supplier'), ctrl.getMonthlyRevenue);
 router.get('/:id', authenticate, ctrl.getOrderById);                              // TV3 task #5
 router.patch('/:id/status', authenticate, authorize('farmer', 'supplier'), ctrl.updateStatus); // TV3 task #6
+router.patch('/:id/payment-confirm', authenticate, authorize('customer'), ctrl.confirmPayment);
 
 module.exports = router;
