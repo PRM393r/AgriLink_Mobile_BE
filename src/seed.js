@@ -11,6 +11,8 @@ const bcrypt = require('bcryptjs');
 const User = require('./modules/users/user.model');
 const Product = require('./modules/products/product.model');
 const Order = require('./modules/orders/order.model');
+const Review = require('./modules/reviews/review.model');
+const Wishlist = require('./modules/wishlists/wishlist.model');
 
 const MONGO_URI = process.env.MONGODB_URI;
 
@@ -86,6 +88,78 @@ const USERS = [
     role: 'customer',
     fullName: 'Hoàng Văn Minh',
     address: 'Đà Nẵng',
+    isVerified: true,
+  },
+  {
+    email: 'customer4@agrilink.vn',
+    password: 'demo123',
+    role: 'customer',
+    fullName: 'Nguyễn Thị Lan',
+    address: 'Hải Phòng',
+    isVerified: true,
+  },
+  {
+    email: 'customer5@agrilink.vn',
+    password: 'demo123',
+    role: 'customer',
+    fullName: 'Trần Văn Đức',
+    address: 'Cần Thơ',
+    isVerified: true,
+  },
+  {
+    email: 'customer6@agrilink.vn',
+    password: 'demo123',
+    role: 'customer',
+    fullName: 'Đỗ Thị Hằng',
+    address: 'Huế',
+    isVerified: true,
+  },
+  {
+    email: 'customer7@agrilink.vn',
+    password: 'demo123',
+    role: 'customer',
+    fullName: 'Bùi Minh Khoa',
+    address: 'Nha Trang, Khánh Hòa',
+    isVerified: true,
+  },
+  {
+    email: 'customer8@agrilink.vn',
+    password: 'demo123',
+    role: 'customer',
+    fullName: 'Ngô Thị Thu',
+    address: 'Vũng Tàu',
+    isVerified: true,
+  },
+  {
+    email: 'customer9@agrilink.vn',
+    password: 'demo123',
+    role: 'customer',
+    fullName: 'Phan Văn Long',
+    address: 'Biên Hòa, Đồng Nai',
+    isVerified: true,
+  },
+  {
+    email: 'customer10@agrilink.vn',
+    password: 'demo123',
+    role: 'customer',
+    fullName: 'Vũ Thị Nga',
+    address: 'Nam Định',
+    isVerified: true,
+  },
+  {
+    email: 'customer11@agrilink.vn',
+    password: 'demo123',
+    role: 'customer',
+    fullName: 'Đặng Văn Phúc',
+    address: 'Buôn Ma Thuột, Đắk Lắk',
+    isVerified: true,
+  },
+  {
+    email: 'customer12@agrilink.vn',
+    password: 'demo123',
+    role: 'customer',
+    fullName: 'Lý Thị Mai',
+    address: 'Quy Nhơn, Bình Định',
     isVerified: true,
   },
 ];
@@ -447,150 +521,288 @@ async function seed() {
     console.log(`📦 Created product: ${p.name}`);
   }
 
-  // ── Seed orders ──────────────────────────────────────────────────────────────
-  const customerIds = createdUsers.filter((u) => u.role === 'customer').map((u) => u._id);
-  const supplierProducts = createdProducts.filter((p) => p.sellerType === 'supplier');
-  const farmerProducts = createdProducts.filter((p) => p.sellerType === 'farmer');
+  // ── Seed orders (thuật toán sinh động, đảm bảo mỗi seller/customer ≥5 đơn) ────
+  const customerUsers = createdUsers.filter((u) => u.role === 'customer');
+  const sellerUsers = createdUsers.filter((u) => u.role === 'farmer' || u.role === 'supplier');
 
-  await Order.deleteMany({ buyerId: { $in: customerIds } });
+  await Order.deleteMany({ buyerId: { $in: customerUsers.map((u) => u._id) } });
   console.log('🗑️  Cleared existing seed orders');
 
-  const SEED_ORDERS = [
-    // customer1 mua từ supplier1
-    {
-      buyerId: customerIds[0],
-      sellerId: supplierProducts[0]?.sellerId,
-      items: [{
-        productId: supplierProducts[0]?._id,
-        productSnapshot: { name: supplierProducts[0]?.name, pricePerUnit: supplierProducts[0]?.pricePerUnit, unit: supplierProducts[0]?.unit, imageUrl: supplierProducts[0]?.images?.[0]?.url || '' },
-        quantity: 25, unitPrice: supplierProducts[0]?.pricePerUnit || 18000, totalPrice: (supplierProducts[0]?.pricePerUnit || 18000) * 25,
-      }],
-      shippingAddressSnapshot: { recipientName: 'Lê Văn Cường', phone: '0901234567', address: 'Hà Nội' },
-      subtotal: (supplierProducts[0]?.pricePerUnit || 18000) * 25,
-      shippingFee: 0,
-      totalAmount: (supplierProducts[0]?.pricePerUnit || 18000) * 25,
-      paymentMethod: 'cod',
-      status: 'pending',
-      statusHistory: [{ status: 'pending', changedAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }],
-    },
-    // customer2 mua từ supplier1
-    {
-      buyerId: customerIds[1],
-      sellerId: supplierProducts[0]?.sellerId,
-      items: [{
-        productId: supplierProducts[2]?._id,
-        productSnapshot: { name: supplierProducts[2]?.name, pricePerUnit: supplierProducts[2]?.pricePerUnit, unit: supplierProducts[2]?.unit, imageUrl: supplierProducts[2]?.images?.[0]?.url || '' },
-        quantity: 2, unitPrice: supplierProducts[2]?.pricePerUnit || 350000, totalPrice: (supplierProducts[2]?.pricePerUnit || 350000) * 2,
-      }],
-      shippingAddressSnapshot: { recipientName: 'Phạm Thị Dung', phone: '0912345678', address: 'TP. Hồ Chí Minh' },
-      subtotal: (supplierProducts[2]?.pricePerUnit || 350000) * 2,
-      shippingFee: 0,
-      totalAmount: (supplierProducts[2]?.pricePerUnit || 350000) * 2,
-      paymentMethod: 'cod',
-      status: 'confirmed',
-      statusHistory: [
-        { status: 'pending',   changedAt: new Date(Date.now() - 5 * 60 * 60 * 1000) },
-        { status: 'confirmed', changedAt: new Date(Date.now() - 4 * 60 * 60 * 1000) },
-      ],
-    },
-    // customer3 mua từ supplier2
-    {
-      buyerId: customerIds[2],
-      sellerId: supplierProducts[6]?.sellerId,
-      items: [{
-        productId: supplierProducts[6]?._id,
-        productSnapshot: { name: supplierProducts[6]?.name, pricePerUnit: supplierProducts[6]?.pricePerUnit, unit: supplierProducts[6]?.unit, imageUrl: supplierProducts[6]?.images?.[0]?.url || '' },
-        quantity: 1, unitPrice: supplierProducts[6]?.pricePerUnit || 1250000, totalPrice: supplierProducts[6]?.pricePerUnit || 1250000,
-      }],
-      shippingAddressSnapshot: { recipientName: 'Hoàng Văn Minh', phone: '0923456789', address: 'Đà Nẵng' },
-      subtotal: supplierProducts[6]?.pricePerUnit || 1250000,
-      shippingFee: 0,
-      totalAmount: supplierProducts[6]?.pricePerUnit || 1250000,
-      paymentMethod: 'cod',
-      status: 'preparing',
-      statusHistory: [
-        { status: 'pending',   changedAt: new Date(Date.now() - 8 * 60 * 60 * 1000) },
-        { status: 'confirmed', changedAt: new Date(Date.now() - 7 * 60 * 60 * 1000) },
-        { status: 'preparing', changedAt: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-      ],
-    },
-    // customer1 mua nông sản từ farmer1
-    {
-      buyerId: customerIds[0],
-      sellerId: farmerProducts[0]?.sellerId,
-      items: [{
-        productId: farmerProducts[0]?._id,
-        productSnapshot: { name: farmerProducts[0]?.name, pricePerUnit: farmerProducts[0]?.pricePerUnit, unit: farmerProducts[0]?.unit, imageUrl: farmerProducts[0]?.images?.[0]?.url || '' },
-        quantity: 2, unitPrice: farmerProducts[0]?.pricePerUnit || 180000, totalPrice: (farmerProducts[0]?.pricePerUnit || 180000) * 2,
-      }],
-      shippingAddressSnapshot: { recipientName: 'Lê Văn Cường', phone: '0901234567', address: 'Hà Nội' },
-      subtotal: (farmerProducts[0]?.pricePerUnit || 180000) * 2,
-      shippingFee: 0,
-      totalAmount: (farmerProducts[0]?.pricePerUnit || 180000) * 2,
-      paymentMethod: 'cod',
-      status: 'shipping',
-      statusHistory: [
-        { status: 'pending',   changedAt: new Date(Date.now() - 25 * 60 * 60 * 1000) },
-        { status: 'confirmed', changedAt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-        { status: 'preparing', changedAt: new Date(Date.now() - 20 * 60 * 60 * 1000) },
-        { status: 'shipping',  changedAt: new Date(Date.now() - 4 * 60 * 60 * 1000) },
-      ],
-    },
-    // customer2 mua từ farmer2
-    {
-      buyerId: customerIds[1],
-      sellerId: farmerProducts[6]?.sellerId,
-      items: [{
-        productId: farmerProducts[6]?._id,
-        productSnapshot: { name: farmerProducts[6]?.name, pricePerUnit: farmerProducts[6]?.pricePerUnit, unit: farmerProducts[6]?.unit, imageUrl: farmerProducts[6]?.images?.[0]?.url || '' },
-        quantity: 5, unitPrice: farmerProducts[6]?.pricePerUnit || 120000, totalPrice: (farmerProducts[6]?.pricePerUnit || 120000) * 5,
-      }],
-      shippingAddressSnapshot: { recipientName: 'Phạm Thị Dung', phone: '0912345678', address: 'TP. Hồ Chí Minh' },
-      subtotal: (farmerProducts[6]?.pricePerUnit || 120000) * 5,
-      shippingFee: 0,
-      totalAmount: (farmerProducts[6]?.pricePerUnit || 120000) * 5,
-      paymentMethod: 'cod',
-      status: 'delivered',
-      statusHistory: [
-        { status: 'pending',   changedAt: new Date(Date.now() - 50 * 60 * 60 * 1000) },
-        { status: 'confirmed', changedAt: new Date(Date.now() - 48 * 60 * 60 * 1000) },
-        { status: 'preparing', changedAt: new Date(Date.now() - 36 * 60 * 60 * 1000) },
-        { status: 'shipping',  changedAt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-        { status: 'delivered', changedAt: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-      ],
-    },
-    // cancelled order — supplier1
-    {
-      buyerId: customerIds[0],
-      sellerId: supplierProducts[1]?.sellerId,
-      items: [{
-        productId: supplierProducts[1]?._id,
-        productSnapshot: { name: supplierProducts[1]?.name, pricePerUnit: supplierProducts[1]?.pricePerUnit, unit: supplierProducts[1]?.unit, imageUrl: supplierProducts[1]?.images?.[0]?.url || '' },
-        quantity: 40, unitPrice: supplierProducts[1]?.pricePerUnit || 8000, totalPrice: (supplierProducts[1]?.pricePerUnit || 8000) * 40,
-      }],
-      shippingAddressSnapshot: { recipientName: 'Lê Văn Cường', phone: '0901234567', address: 'Hà Nội' },
-      subtotal: (supplierProducts[1]?.pricePerUnit || 8000) * 40,
-      shippingFee: 0,
-      totalAmount: (supplierProducts[1]?.pricePerUnit || 8000) * 40,
-      paymentMethod: 'cod',
-      status: 'cancelled',
-      cancelReason: 'Khách hàng đổi ý, không còn nhu cầu',
-      statusHistory: [
-        { status: 'pending',   changedAt: new Date(Date.now() - 10 * 60 * 60 * 1000) },
-        { status: 'cancelled', changedAt: new Date(Date.now() - 9 * 60 * 60 * 1000) },
-      ],
-    },
+  const MIN_ORDERS_PER_ACTOR = 5;
+  const STATUS_WEIGHTS = [
+    ['pending', 0.15],
+    ['confirmed', 0.15],
+    ['preparing', 0.15],
+    ['shipping', 0.15],
+    ['delivered', 0.35],
+    ['cancelled', 0.05],
   ];
 
-  for (const o of SEED_ORDERS) {
-    if (!o.sellerId) continue;
-    const order = await Order.create(o);
-    console.log(`🛒 Created order: ${order.orderCode} (${o.status})`);
+  function pickStatus() {
+    const r = Math.random();
+    let acc = 0;
+    for (const [status, weight] of STATUS_WEIGHTS) {
+      acc += weight;
+      if (r <= acc) return status;
+    }
+    return 'delivered';
   }
+
+  // Sinh statusHistory hợp lý theo status, mốc thời gian lùi dần từ baseHoursAgo tới hiện tại.
+  function buildStatusHistory(status, baseHoursAgo) {
+    const STEPS = ['pending', 'confirmed', 'preparing', 'shipping', 'delivered'];
+    if (status === 'cancelled') {
+      const cancelStage = Math.random() < 0.7 ? 0 : 1; // đa số hủy ngay lúc pending, số ít sau khi đã confirmed
+      const history = [{ status: 'pending', changedAt: new Date(Date.now() - baseHoursAgo * 3600 * 1000) }];
+      if (cancelStage === 1) {
+        history.push({ status: 'confirmed', changedAt: new Date(Date.now() - (baseHoursAgo - 1) * 3600 * 1000) });
+      }
+      history.push({ status: 'cancelled', changedAt: new Date(Date.now() - Math.max(0.5, baseHoursAgo - 2) * 3600 * 1000) });
+      return history;
+    }
+
+    const idx = STEPS.indexOf(status);
+    const history = [];
+    const step = baseHoursAgo / (idx + 2);
+    for (let i = 0; i <= idx; i++) {
+      history.push({
+        status: STEPS[i],
+        changedAt: new Date(Date.now() - Math.max(0.25, baseHoursAgo - step * i) * 3600 * 1000),
+      });
+    }
+    return history;
+  }
+
+  // Round-robin có offset: mỗi seller bắt đầu từ 1 điểm khác nhau trên vòng tròn customer
+  // để trải đều — tránh customer nào bị bỏ sót hoặc chỉ gắn với 1-2 seller.
+  function buildOrderPairs(sellers, customers) {
+    const pairs = [];
+    const ORDERS_PER_SELLER = 6; // > MIN_ORDERS_PER_ACTOR để có dư, topUp sẽ cân bằng phần còn thiếu
+    sellers.forEach((seller, sIdx) => {
+      const offset = (sIdx * 2) % customers.length;
+      for (let i = 0; i < ORDERS_PER_SELLER; i++) {
+        const customer = customers[(offset + i) % customers.length];
+        pairs.push({ seller, customer });
+      }
+    });
+    return pairs;
+  }
+
+  function randInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function buildOrder(seller, customer, productsBySeller) {
+    const sellerProducts = productsBySeller.get(seller._id.toString()) || [];
+    if (sellerProducts.length === 0) return null;
+
+    const itemCount = randInt(1, Math.min(3, sellerProducts.length));
+    const shuffled = [...sellerProducts].sort(() => Math.random() - 0.5);
+    const chosenProducts = shuffled.slice(0, itemCount);
+
+    const items = chosenProducts.map((p) => {
+      const minQty = p.minOrderQuantity || 1;
+      const quantity = randInt(Math.ceil(minQty), Math.ceil(minQty) + randInt(1, 5));
+      const totalPrice = p.pricePerUnit * quantity;
+      return {
+        productId: p._id,
+        productSnapshot: {
+          name: p.name,
+          pricePerUnit: p.pricePerUnit,
+          unit: p.unit,
+          imageUrl: p.images?.[0]?.url || '',
+        },
+        quantity,
+        unitPrice: p.pricePerUnit,
+        totalPrice,
+      };
+    });
+
+    const subtotal = items.reduce((sum, i) => sum + i.totalPrice, 0);
+    const status = pickStatus();
+    // Trải createdAt trong 60 ngày gần đây để dashboard "hôm nay/tháng này" có dữ liệu thật
+    const baseHoursAgo = randInt(2, 60 * 24);
+    const statusHistory = buildStatusHistory(status, baseHoursAgo);
+    const createdAt = statusHistory[0].changedAt;
+
+    const order = {
+      buyerId: customer._id,
+      sellerId: seller._id,
+      items,
+      shippingAddressSnapshot: {
+        recipientName: customer.fullName,
+        phone: '09' + randInt(10000000, 99999999),
+        address: customer.address,
+      },
+      subtotal,
+      shippingFee: 0,
+      totalAmount: subtotal,
+      paymentMethod: ['cod', 'bank_transfer', 'vnpay'][randInt(0, 2)],
+      status,
+      statusHistory,
+      createdAt,
+    };
+    if (status === 'cancelled') {
+      order.cancelReason = [
+        'Khách hàng đổi ý, không còn nhu cầu',
+        'Đặt nhầm sản phẩm',
+        'Tìm được nơi bán giá tốt hơn',
+        'Thời gian giao hàng quá lâu',
+      ][randInt(0, 3)];
+    }
+    return order;
+  }
+
+  // Sau khi sinh xong theo round-robin, đếm lại theo seller/customer và bổ sung
+  // order ngẫu nhiên cho bất kỳ ai chưa đạt MIN_ORDERS_PER_ACTOR.
+  function topUpToMinimum(orders, sellers, customers, productsBySeller) {
+    const countBySeller = new Map();
+    const countByCustomer = new Map();
+    for (const o of orders) {
+      const sKey = o.sellerId.toString();
+      const cKey = o.buyerId.toString();
+      countBySeller.set(sKey, (countBySeller.get(sKey) || 0) + 1);
+      countByCustomer.set(cKey, (countByCustomer.get(cKey) || 0) + 1);
+    }
+
+    for (const seller of sellers) {
+      const sKey = seller._id.toString();
+      while ((countBySeller.get(sKey) || 0) < MIN_ORDERS_PER_ACTOR) {
+        // Ưu tiên gán cho customer đang thiếu đơn nhất để cân bằng cả 2 chiều
+        const neediest = [...customers].sort(
+          (a, b) => (countByCustomer.get(a._id.toString()) || 0) - (countByCustomer.get(b._id.toString()) || 0)
+        )[0];
+        const order = buildOrder(seller, neediest, productsBySeller);
+        if (!order) break;
+        orders.push(order);
+        countBySeller.set(sKey, (countBySeller.get(sKey) || 0) + 1);
+        countByCustomer.set(neediest._id.toString(), (countByCustomer.get(neediest._id.toString()) || 0) + 1);
+      }
+    }
+
+    for (const customer of customers) {
+      const cKey = customer._id.toString();
+      while ((countByCustomer.get(cKey) || 0) < MIN_ORDERS_PER_ACTOR) {
+        const neediest = [...sellers].sort(
+          (a, b) => (countBySeller.get(a._id.toString()) || 0) - (countBySeller.get(b._id.toString()) || 0)
+        )[0];
+        const order = buildOrder(neediest, customer, productsBySeller);
+        if (!order) break;
+        orders.push(order);
+        countByCustomer.set(cKey, (countByCustomer.get(cKey) || 0) + 1);
+        countBySeller.set(neediest._id.toString(), (countBySeller.get(neediest._id.toString()) || 0) + 1);
+      }
+    }
+
+    return orders;
+  }
+
+  const productsBySeller = new Map();
+  for (const p of createdProducts) {
+    const key = p.sellerId.toString();
+    if (!productsBySeller.has(key)) productsBySeller.set(key, []);
+    productsBySeller.get(key).push(p);
+  }
+
+  const pairs = buildOrderPairs(sellerUsers, customerUsers);
+  let ordersToCreate = pairs
+    .map(({ seller, customer }) => buildOrder(seller, customer, productsBySeller))
+    .filter(Boolean);
+  ordersToCreate = topUpToMinimum(ordersToCreate, sellerUsers, customerUsers, productsBySeller);
+
+  const createdOrders = [];
+  for (const o of ordersToCreate) {
+    const order = await Order.create(o);
+    createdOrders.push(order);
+  }
+  console.log(`🛒 Created ${createdOrders.length} orders`);
+
+  // ── Seed reviews (dựa trên order 'delivered', dedupe theo buyerId+productId) ──
+  await Review.deleteMany({ buyerId: { $in: customerUsers.map((u) => u._id) } });
+  console.log('🗑️  Cleared existing seed reviews');
+
+  const REVIEW_COMMENTS = {
+    5: [
+      'Sản phẩm rất tốt, đúng như mô tả. Sẽ ủng hộ tiếp!',
+      'Chất lượng tuyệt vời, giao hàng nhanh, đóng gói cẩn thận.',
+      'Rất hài lòng, người bán nhiệt tình tư vấn.',
+    ],
+    4: [
+      'Sản phẩm tốt, giao hàng hơi trễ một chút nhưng ổn.',
+      'Chất lượng ổn so với giá tiền, sẽ mua lại.',
+    ],
+    3: [
+      'Sản phẩm tạm được, không như kỳ vọng ban đầu.',
+      'Đóng gói bình thường, chất lượng chấp nhận được.',
+    ],
+  };
+
+  const reviewSeen = new Set();
+  const reviewsToCreate = [];
+  for (const order of createdOrders) {
+    if (order.status !== 'delivered') continue;
+    if (Math.random() >= 0.6) continue; // 60% order delivered có review
+
+    for (const item of order.items) {
+      const dedupeKey = `${order.buyerId}-${item.productId}`;
+      if (reviewSeen.has(dedupeKey)) continue;
+      reviewSeen.add(dedupeKey);
+
+      const rating = randInt(3, 5);
+      const comments = REVIEW_COMMENTS[rating];
+      reviewsToCreate.push({
+        productId: item.productId,
+        buyerId: order.buyerId,
+        orderId: order._id,
+        rating,
+        comment: comments[randInt(0, comments.length - 1)],
+      });
+    }
+  }
+  for (const r of reviewsToCreate) {
+    await Review.create(r);
+  }
+  console.log(`⭐ Created ${reviewsToCreate.length} reviews`);
+
+  // ── Seed wishlist (mỗi customer 2-4 sản phẩm ngẫu nhiên, dedupe) ─────────────
+  await Wishlist.deleteMany({ user: { $in: customerUsers.map((u) => u._id) } });
+  console.log('🗑️  Cleared existing seed wishlists');
+
+  const wishlistsToCreate = [];
+  for (const customer of customerUsers) {
+    const count = randInt(2, 4);
+    const shuffled = [...createdProducts].sort(() => Math.random() - 0.5).slice(0, count);
+    for (const p of shuffled) {
+      wishlistsToCreate.push({ user: customer._id, product: p._id });
+    }
+  }
+  for (const w of wishlistsToCreate) {
+    await Wishlist.create(w);
+  }
+  console.log(`💚 Created ${wishlistsToCreate.length} wishlist entries`);
+
+  // ── Thống kê kiểm tra ràng buộc ───────────────────────────────────────────────
+  console.log('\n📊 Kiểm tra ràng buộc: mỗi seller/customer phải ≥ 5 đơn từ nhiều đối tác khác nhau');
+  console.log('─────────────────────────────────────────────────────');
+  console.log('SELLERS:');
+  for (const seller of sellerUsers) {
+    const sellerOrders = createdOrders.filter((o) => o.sellerId.toString() === seller._id.toString());
+    const uniqueBuyers = new Set(sellerOrders.map((o) => o.buyerId.toString())).size;
+    const ok = sellerOrders.length >= MIN_ORDERS_PER_ACTOR ? '✅' : '❌';
+    console.log(`  ${ok} ${seller.fullName.padEnd(40)} ${sellerOrders.length} đơn từ ${uniqueBuyers} khách khác nhau`);
+  }
+  console.log('CUSTOMERS:');
+  for (const customer of customerUsers) {
+    const customerOrders = createdOrders.filter((o) => o.buyerId.toString() === customer._id.toString());
+    const uniqueSellers = new Set(customerOrders.map((o) => o.sellerId.toString())).size;
+    const ok = customerOrders.length >= MIN_ORDERS_PER_ACTOR ? '✅' : '❌';
+    console.log(`  ${ok} ${customer.fullName.padEnd(40)} ${customerOrders.length} đơn từ ${uniqueSellers} người bán khác nhau`);
+  }
+  console.log('─────────────────────────────────────────────────────');
 
   console.log('\n✅ Seed hoàn tất!');
   console.log('─────────────────────────────────────────────────────');
-  console.log(`Tổng: ${USERS.length} users, ${products.length} products`);
+  console.log(`Tổng: ${USERS.length} users, ${products.length} products, ${createdOrders.length} orders, ${reviewsToCreate.length} reviews, ${wishlistsToCreate.length} wishlists`);
   console.log('Demo accounts (password: demo123):');
   USERS.forEach((u) => console.log(`  ${u.role.padEnd(10)} ${u.email}`));
   console.log('─────────────────────────────────────────────────────');

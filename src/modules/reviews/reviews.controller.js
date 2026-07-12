@@ -25,11 +25,13 @@ const createReview = async (req, res) => {
       return sendError(res, 400, 'productId, orderId, rating are required');
     }
 
-    // Verify đơn hàng đã giao và thuộc về buyer này
+    // Verify đơn hàng đã giao, thuộc về buyer này, và có chứa đúng sản phẩm được review
     const order = await Order.findById(orderId);
     if (!order) return sendError(res, 404, 'Order not found');
     if (order.buyerId.toString() !== req.user.sub) return sendError(res, 403, 'Forbidden');
     if (order.status !== 'delivered') return sendError(res, 400, 'Can only review delivered orders');
+    const hasProduct = order.items.some((i) => i.productId?.toString() === productId);
+    if (!hasProduct) return sendError(res, 400, 'Sản phẩm không thuộc đơn hàng này');
 
     const review = await Review.create({
       productId, orderId, rating, comment,

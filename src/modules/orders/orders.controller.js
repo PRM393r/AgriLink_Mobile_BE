@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Order = require('./order.model');
 const Product = require('../products/product.model');
 const { sendSuccess, sendError } = require('../../utils/response');
@@ -14,6 +15,8 @@ const STATUS_LABELS = {
 
 // ─── POST /orders ────────────────────────────────────────────────────────────
 // TV3 task #2: Tạo đơn hàng từ cart
+// Cart có thể chứa sản phẩm của nhiều seller khác nhau → group theo sellerId,
+// mỗi seller tạo 1 order riêng. Đồng thời validate + trừ tồn kho.
 const createOrder = async (req, res) => {
   try {
     const { items, shippingAddressSnapshot, note, paymentMethod = 'cod' } = req.body;
@@ -21,61 +24,84 @@ const createOrder = async (req, res) => {
     if (!items || !items.length) return sendError(res, 400, 'items is required');
     if (!shippingAddressSnapshot?.address) return sendError(res, 400, 'shippingAddressSnapshot.address is required');
 
-    // Lấy thông tin sản phẩm để lấy sellerId và snapshot
-    const firstProduct = await Product.findById(items[0].productId);
-    if (!firstProduct) return sendError(res, 404, 'Product not found');
+    // Load toàn bộ product liên quan, validate tồn tại + đủ tồn kho trước khi ghi gì
+    const products = await Product.find({ _id: { $in: items.map((i) => i.productId) } });
+    const productMap = new Map(products.map((p) => [p._id.toString(), p]));
 
-    const sellerId = firstProduct.sellerId;
-
-    // Build order items với snapshot
-    const orderItems = [];
-    let subtotal = 0;
     for (const item of items) {
-      const product = await Product.findById(item.productId).lean();
+      const product = productMap.get(item.productId.toString());
       if (!product) return sendError(res, 404, `Product ${item.productId} not found`);
-      const unitPrice = product.pricePerUnit;
-      const totalPrice = unitPrice * item.quantity;
-      subtotal += totalPrice;
-      orderItems.push({
-        productId: product._id,
-        productSnapshot: {
-          name: product.name,
-          pricePerUnit: product.pricePerUnit,
-          unit: product.unit,
-          imageUrl: product.images?.[0]?.url || '',
-        },
-        quantity: item.quantity,
-        unitPrice,
-        totalPrice,
-      });
+      if (product.availableQuantity < item.quantity) {
+        return sendError(res, 400, `Sản phẩm "${product.name}" chỉ còn ${product.availableQuantity} ${product.unit}`);
+      }
     }
 
-    const shippingFee = 0; // MVP: miễn phí vận chuyển
-    const totalAmount = subtotal + shippingFee;
+    // Group items theo sellerId
+    const bySeller = new Map();
+    for (const item of items) {
+      const product = productMap.get(item.productId.toString());
+      const sellerId = product.sellerId.toString();
+      if (!bySeller.has(sellerId)) bySeller.set(sellerId, []);
+      bySeller.get(sellerId).push({ item, product });
+    }
 
-    const order = await Order.create({
-      buyerId: req.user.sub,
-      sellerId,
-      items: orderItems,
-      shippingAddressSnapshot,
-      subtotal,
-      shippingFee,
-      totalAmount,
-      paymentMethod,
-      note,
-      statusHistory: [{ status: 'pending', changedAt: new Date() }],
-    });
+    const createdOrders = [];
+    for (const [sellerId, entries] of bySeller) {
+      const orderItems = [];
+      let subtotal = 0;
+      for (const { item, product } of entries) {
+        const unitPrice = product.pricePerUnit;
+        const totalPrice = unitPrice * item.quantity;
+        subtotal += totalPrice;
+        orderItems.push({
+          productId: product._id,
+          productSnapshot: {
+            name: product.name,
+            pricePerUnit: product.pricePerUnit,
+            unit: product.unit,
+            imageUrl: product.images?.[0]?.url || '',
+          },
+          quantity: item.quantity,
+          unitPrice,
+          totalPrice,
+        });
+      }
 
-    // Notify seller: đơn hàng mới
-    createNotification(
-      sellerId.toString(),
-      'order_created',
-      'Đơn hàng mới',
-      `Bạn có đơn hàng mới #${order.orderCode} (${orderItems.length} sản phẩm)`,
-      { orderId: order._id.toString(), orderCode: order.orderCode }
-    ).catch(() => {});
+      const shippingFee = 0; // MVP: miễn phí vận chuyển
+      const totalAmount = subtotal + shippingFee;
 
-    return sendSuccess(res, order.toObject(), 'Order created', 201);
+      const order = await Order.create({
+        buyerId: req.user.sub,
+        sellerId,
+        items: orderItems,
+        shippingAddressSnapshot,
+        subtotal,
+        shippingFee,
+        totalAmount,
+        paymentMethod,
+        note,
+        statusHistory: [{ status: 'pending', changedAt: new Date() }],
+      });
+
+      // Trừ tồn kho sau khi order tạo thành công
+      for (const { item, product } of entries) {
+        await Product.findByIdAndUpdate(product._id, {
+          $inc: { availableQuantity: -item.quantity },
+        });
+      }
+
+      createNotification(
+        sellerId,
+        'order_created',
+        'Đơn hàng mới',
+        `Bạn có đơn hàng mới #${order.orderCode} (${orderItems.length} sản phẩm)`,
+        { orderId: order._id.toString(), orderCode: order.orderCode }
+      ).catch(() => {});
+
+      createdOrders.push(order.toObject());
+    }
+
+    return sendSuccess(res, createdOrders.length === 1 ? createdOrders[0] : createdOrders, 'Order created', 201);
   } catch (err) {
     return sendError(res, 500, err.message);
   }
@@ -151,8 +177,34 @@ const updateStatus = async (req, res) => {
 
     const order = await Order.findById(req.params.id);
     if (!order) return sendError(res, 404, 'Order not found');
-    if (order.sellerId.toString() !== req.user.sub) {
+
+    const isSeller = order.sellerId.toString() === req.user.sub;
+    const isBuyer = order.buyerId.toString() === req.user.sub;
+
+    // Buyer chỉ được phép tự hủy đơn khi còn 'pending'; mọi transition khác là của seller
+    if (isBuyer && !isSeller) {
+      if (status !== 'cancelled') {
+        return sendError(res, 403, 'Forbidden: chỉ có thể hủy đơn hàng');
+      }
+      if (order.status !== 'pending') {
+        return sendError(res, 400, 'Chỉ có thể hủy đơn khi đang chờ xác nhận');
+      }
+    } else if (!isSeller) {
       return sendError(res, 403, 'Forbidden: not your order');
+    }
+
+    // Hàng đã giao cho shipper hoặc đã giao xong thì không thể hủy nữa
+    if (status === 'cancelled' && ['shipping', 'delivered'].includes(order.status)) {
+      return sendError(res, 400, 'Không thể hủy đơn đang giao hoặc đã giao');
+    }
+
+    // Hoàn lại tồn kho khi hủy đơn
+    if (status === 'cancelled' && order.status !== 'cancelled') {
+      for (const item of order.items) {
+        await Product.findByIdAndUpdate(item.productId, {
+          $inc: { availableQuantity: item.quantity },
+        });
+      }
     }
 
     order.status = status;
@@ -186,11 +238,13 @@ const updateStatus = async (req, res) => {
 const getSellerStats = async (req, res) => {
   try {
     const sellerId = req.user.sub;
+    const sellerObjectId = new mongoose.Types.ObjectId(sellerId);
 
     const [totalRevenueResult, totalOrders, pendingOrders, totalProducts] = await Promise.all([
       // Tổng doanh thu từ các đơn hàng 'delivered'
+      // aggregate() không tự cast string -> ObjectId như find(), phải convert thủ công
       Order.aggregate([
-        { $match: { sellerId, status: 'delivered' } },
+        { $match: { sellerId: sellerObjectId, status: 'delivered' } },
         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
       ]),
       // Tổng số đơn hàng
@@ -217,7 +271,7 @@ const getSellerStats = async (req, res) => {
 // ─── GET /orders/seller-stats/monthly ───────────────────────────────────────────
 const getMonthlyRevenue = async (req, res) => {
   try {
-    const sellerId = req.user.sub;
+    const sellerId = new mongoose.Types.ObjectId(req.user.sub);
     const { type } = req.query; // 'daily' or 'monthly'
     const now = new Date();
     const currentYear = now.getFullYear();
