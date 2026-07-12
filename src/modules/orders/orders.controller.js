@@ -1,5 +1,6 @@
 const Order = require('./order.model');
 const Product = require('../products/product.model');
+const User = require('../users/user.model');
 const { sendSuccess, sendError } = require('../../utils/response');
 const { createNotification } = require('../notifications/notifications.controller');
 const { startOrderTracking } = require('../tracking/tracking.socket');
@@ -21,22 +22,18 @@ const createOrder = async (req, res) => {
     if (!items || !items.length) return sendError(res, 400, 'items is required');
     if (!shippingAddressSnapshot?.address) return sendError(res, 400, 'shippingAddressSnapshot.address is required');
 
-    // Lấy thông tin sản phẩm để lấy sellerId và snapshot
-    const firstProduct = await Product.findById(items[0].productId);
-    if (!firstProduct) return sendError(res, 404, 'Product not found');
-
-    const sellerId = firstProduct.sellerId;
-
-    // Build order items với snapshot
-    const orderItems = [];
-    let subtotal = 0;
+    // Nhóm sản phẩm theo seller: một checkout có thể tạo nhiều order con.
+    const groups = new Map();
     for (const item of items) {
       const product = await Product.findById(item.productId).lean();
       if (!product) return sendError(res, 404, `Product ${item.productId} not found`);
       const unitPrice = product.pricePerUnit;
       const totalPrice = unitPrice * item.quantity;
-      subtotal += totalPrice;
-      orderItems.push({
+      const sellerId = product.sellerId.toString();
+      if (!groups.has(sellerId)) groups.set(sellerId, { sellerId, subtotal: 0, items: [] });
+      const group = groups.get(sellerId);
+      group.subtotal += totalPrice;
+      group.items.push({
         productId: product._id,
         productSnapshot: {
           name: product.name,
@@ -50,32 +47,65 @@ const createOrder = async (req, res) => {
       });
     }
 
-    const shippingFee = 0; // MVP: miễn phí vận chuyển
-    const totalAmount = subtotal + shippingFee;
+    // Validate tất cả seller trước khi tạo order để tránh tạo dở dang.
+    for (const group of groups.values()) {
+      const seller = await User.findById(group.sellerId).lean();
+      if (!seller) return sendError(res, 404, 'Seller not found');
+      group.seller = seller;
+      if (paymentMethod === 'bank_transfer') {
+        const bank = seller.bankInfo || {};
+        if (!bank.bankCode || !bank.accountNumber || !bank.accountName) {
+          return sendError(res, 400, `Người bán ${seller.fullName || group.sellerId} chưa thiết lập thông tin nhận chuyển khoản`);
+        }
+      }
+    }
 
-    const order = await Order.create({
-      buyerId: req.user.sub,
-      sellerId,
-      items: orderItems,
-      shippingAddressSnapshot,
-      subtotal,
-      shippingFee,
-      totalAmount,
-      paymentMethod,
-      note,
-      statusHistory: [{ status: 'pending', changedAt: new Date() }],
-    });
+    const createdOrders = [];
+    for (const group of groups.values()) {
+      const shippingFee = 0;
+      const order = await Order.create({
+        buyerId: req.user.sub,
+        sellerId: group.sellerId,
+        items: group.items,
+        shippingAddressSnapshot,
+        subtotal: group.subtotal,
+        shippingFee,
+        totalAmount: group.subtotal + shippingFee,
+        paymentMethod,
+        paymentRecipient: paymentMethod === 'bank_transfer'
+          ? {
+              bankCode: group.seller.bankInfo.bankCode,
+              accountNumber: group.seller.bankInfo.accountNumber,
+              accountName: group.seller.bankInfo.accountName,
+            }
+          : undefined,
+        note,
+        statusHistory: [{ status: 'pending', changedAt: new Date() }],
+      });
+      await Promise.all([
+        createNotification(
+          group.sellerId,
+          'order_created',
+          'Có khách đặt hàng',
+          `Bạn có đơn hàng mới #${order.orderCode} (${group.items.length} sản phẩm)`,
+          { orderId: order._id.toString(), orderCode: order.orderCode }
+        ),
+        createNotification(
+          req.user.sub,
+          'order_created',
+          'Đặt hàng thành công',
+          `Đơn hàng #${order.orderCode} đã được tạo và đang chờ người bán xác nhận.`,
+          { orderId: order._id.toString(), orderCode: order.orderCode }
+        ),
+      ]);
+      createdOrders.push(order.toObject());
+    }
 
-    // Notify seller: đơn hàng mới
-    createNotification(
-      sellerId.toString(),
-      'order_created',
-      'Đơn hàng mới',
-      `Bạn có đơn hàng mới #${order.orderCode} (${orderItems.length} sản phẩm)`,
-      { orderId: order._id.toString(), orderCode: order.orderCode }
-    ).catch(() => {});
-
-    return sendSuccess(res, order.toObject(), 'Order created', 201);
+    // Giữ response cũ cho checkout một seller; trả danh sách khi có nhiều seller.
+    const responseData = createdOrders.length === 1
+      ? createdOrders[0]
+      : { orders: createdOrders, totalOrders: createdOrders.length };
+    return sendSuccess(res, responseData, `${createdOrders.length} order(s) created`, 201);
   } catch (err) {
     return sendError(res, 500, err.message);
   }
@@ -167,15 +197,44 @@ const updateStatus = async (req, res) => {
 
     // Notify buyer: status thay đổi
     const label = STATUS_LABELS[status] ?? status;
-    createNotification(
+    await createNotification(
       order.buyerId.toString(),
       `order_${status}`,
       `Đơn hàng ${label}`,
       `Đơn hàng #${order.orderCode} của bạn đã ${label.toLowerCase()}.`,
       { orderId: order._id.toString(), orderCode: order.orderCode, status }
-    ).catch(() => {});
+    );
 
     return sendSuccess(res, order.toObject(), 'Status updated');
+  } catch (err) {
+    return sendError(res, 500, err.message);
+  }
+};
+
+// ─── PATCH /orders/:id/payment-confirm ──────────────────────────────────────
+// MVP: người mua xác nhận đã hoàn tất QR chuyển khoản/VNPay.
+const confirmPayment = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return sendError(res, 404, 'Order not found');
+    if (order.buyerId.toString() !== req.user.sub) {
+      return sendError(res, 403, 'Forbidden: not your order');
+    }
+    if (!['bank_transfer', 'vnpay', 'payos'].includes(order.paymentMethod)) {
+      return sendError(res, 400, 'Payment confirmation is not required for this method');
+    }
+
+    order.paymentStatus = 'paid';
+    await order.save();
+    await createNotification(
+      order.sellerId.toString(),
+      'system',
+      'Đơn hàng đã thanh toán',
+      `Đơn hàng #${order.orderCode} đã được người mua xác nhận thanh toán.`,
+      { orderId: order._id.toString(), orderCode: order.orderCode }
+    );
+
+    return sendSuccess(res, order.toObject(), 'Payment confirmed');
   } catch (err) {
     return sendError(res, 500, err.message);
   }
@@ -293,5 +352,5 @@ const getMonthlyRevenue = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, getOrders, getOrderById, updateStatus, getSellerStats, getMonthlyRevenue };
+module.exports = { createOrder, getOrders, getOrderById, updateStatus, confirmPayment, getSellerStats, getMonthlyRevenue };
 

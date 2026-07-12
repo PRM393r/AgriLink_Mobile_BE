@@ -45,6 +45,11 @@ const orderSchema = new mongoose.Schema(
       enum: ['unpaid', 'paid', 'refunded'],
       default: 'unpaid',
     },
+    paymentRecipient: {
+      bankCode: { type: String, default: '' },
+      accountNumber: { type: String, default: '' },
+      accountName: { type: String, default: '' },
+    },
     note: { type: String, default: '' },
     cancelReason: { type: String, default: '' },
     statusHistory: [
