@@ -37,7 +37,7 @@ const orderSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true },
     paymentMethod: {
       type: String,
-      enum: ['cod', 'bank_transfer', 'vnpay'],
+      enum: ['cod', 'bank_transfer', 'vnpay', 'payos'],
       default: 'cod',
     },
     paymentStatus: {
@@ -50,6 +50,10 @@ const orderSchema = new mongoose.Schema(
       accountNumber: { type: String, default: '' },
       accountName: { type: String, default: '' },
     },
+    // PayOS: orderCode riêng dạng số (PayOS yêu cầu orderCode là number, khác _id/orderCode string của hệ thống)
+    payosOrderCode: { type: Number, unique: true, sparse: true },
+    payosPaymentLinkId: { type: String, default: '' },
+    payosCheckoutUrl: { type: String, default: '' },
     note: { type: String, default: '' },
     cancelReason: { type: String, default: '' },
     statusHistory: [
