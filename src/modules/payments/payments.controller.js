@@ -35,8 +35,9 @@ const createPaymentLink = async (req, res) => {
     }
 
     const payosOrderCode = generatePayosOrderCode();
-    const returnUrl = process.env.PAYOS_RETURN_URL || 'https://agrilink.vn/payment/success';
-    const cancelUrl = process.env.PAYOS_CANCEL_URL || 'https://agrilink.vn/payment/cancel';
+    // Deep link mặc định đưa buyer quay lại app mobile (agrilink://payment-result) thay vì 1 domain web chưa tồn tại.
+    const returnUrl = process.env.PAYOS_RETURN_URL || 'agrilink://payment-result?status=success';
+    const cancelUrl = process.env.PAYOS_CANCEL_URL || 'agrilink://payment-result?status=cancel';
 
     const paymentLink = await payos.paymentRequests.create({
       orderCode: payosOrderCode,
