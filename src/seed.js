@@ -69,6 +69,14 @@ const TRACE_RECORDS = [
 // ─── Demo users ───────────────────────────────────────────────────────────────
 const USERS = [
   {
+    email: 'admin@agrilink.vn',
+    password: 'demo123',
+    role: 'admin',
+    fullName: 'Quản trị viên AgriLink',
+    address: 'Hồ Chí Minh',
+    isVerified: true,
+  },
+  {
     email: 'farmer1@agrilink.vn',
     password: 'demo123',
     role: 'farmer',

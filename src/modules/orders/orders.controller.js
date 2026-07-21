@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Order = require('./order.model');
 const Product = require('../products/product.model');
 const User = require('../users/user.model');
+const Dispute = require('../admin/dispute.model');
 const { sendSuccess, sendError } = require('../../utils/response');
 const { createNotification } = require('../notifications/notifications.controller');
 const { startOrderTracking } = require('../tracking/tracking.socket');
@@ -399,5 +400,33 @@ const getMonthlyRevenue = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, getOrders, getOrderById, updateStatus, confirmPayment, getSellerStats, getMonthlyRevenue };
+// ─── POST /orders/:id/dispute ────────────────────────────────────────────────
+// Buyer tạo khiếu nại cho đơn hàng của mình (vd hàng lỗi, giao sai, không nhận được hàng).
+const createDispute = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) return sendError(res, 400, 'reason là bắt buộc');
+
+    const order = await Order.findById(req.params.id).lean();
+    if (!order) return sendError(res, 404, 'Order not found');
+    if (order.buyerId.toString() !== req.user.sub) {
+      return sendError(res, 403, 'Forbidden: not your order');
+    }
+
+    const existing = await Dispute.findOne({ orderId: order._id, status: 'open' }).lean();
+    if (existing) return sendError(res, 400, 'Đơn hàng này đã có khiếu nại đang xử lý');
+
+    const dispute = await Dispute.create({
+      orderId: order._id,
+      raisedBy: req.user.sub,
+      reason: reason.trim(),
+    });
+
+    return sendSuccess(res, dispute, 'Đã gửi khiếu nại, chúng tôi sẽ xử lý sớm nhất', 201);
+  } catch (err) {
+    return sendError(res, 500, err.message);
+  }
+};
+
+module.exports = { createOrder, getOrders, getOrderById, updateStatus, confirmPayment, getSellerStats, getMonthlyRevenue, createDispute };
 

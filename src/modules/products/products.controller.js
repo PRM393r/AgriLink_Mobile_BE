@@ -1,4 +1,5 @@
 const Product = require('./product.model');
+const User = require('../users/user.model');
 const { sendSuccess, sendError } = require('../../utils/response');
 
 // ─── GET /products ────────────────────────────────────────────────────────────
@@ -98,6 +99,14 @@ const getProductById = async (req, res) => {
 // TV2 task #2
 const createProduct = async (req, res) => {
   try {
+    const seller = await User.findById(req.user.sub).select('sellerApprovalStatus').lean();
+    if (seller?.sellerApprovalStatus === 'pending') {
+      return sendError(res, 403, 'Tài khoản của bạn đang chờ admin duyệt. Vui lòng chờ trước khi đăng bán sản phẩm.');
+    }
+    if (seller?.sellerApprovalStatus === 'rejected') {
+      return sendError(res, 403, 'Tài khoản bán hàng của bạn đã bị từ chối. Vui lòng liên hệ hỗ trợ.');
+    }
+
     const sellerType = req.user.role === 'farmer' ? 'farmer' : 'supplier';
     const product = await Product.create({
       ...req.body,
