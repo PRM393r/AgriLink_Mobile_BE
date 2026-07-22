@@ -737,7 +737,7 @@ async function seed() {
       subtotal,
       shippingFee: 0,
       totalAmount: subtotal,
-      paymentMethod: ['cod', 'bank_transfer', 'vnpay'][randInt(0, 2)],
+      paymentMethod: ['cod', 'bank_transfer'][randInt(0, 1)],
       status,
       statusHistory,
       createdAt,

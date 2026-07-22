@@ -12,6 +12,7 @@ router.get('/:id', authenticate, ctrl.getOrderById);                            
 // — phân quyền chi tiết theo buyer/seller nằm trong controller.
 router.patch('/:id/status', authenticate, authorize('farmer', 'supplier', 'customer'), ctrl.updateStatus); // TV3 task #6
 router.patch('/:id/payment-confirm', authenticate, authorize('customer'), ctrl.confirmPayment);
+router.patch('/:id/payment-confirm-seller', authenticate, authorize('farmer', 'supplier'), ctrl.confirmPaymentBySeller);
 router.post('/:id/dispute', authenticate, authorize('customer'), ctrl.createDispute);
 
 module.exports = router;

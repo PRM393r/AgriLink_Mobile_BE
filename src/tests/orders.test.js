@@ -262,6 +262,39 @@ describe('PATCH /api/v1/orders/:id/status', () => {
 
     expect(res.status).toBe(404);
   });
+
+  test('buyer can self-cancel a pending order within 24h', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/orders/${order._id}/status`)
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({ status: 'cancelled', cancelReason: 'Đổi ý' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('cancelled');
+  });
+
+  test('buyer cannot self-cancel a pending order after 24h', async () => {
+    const oldOrder = await Order.create({
+      buyerId:  buyer.userId,
+      sellerId: seller.userId,
+      items: [{
+        productId: testProduct._id,
+        productSnapshot: { name: 'Cà chua bi organic', unit: 'kg' },
+        quantity: 1, unitPrice: 35000, totalPrice: 35000,
+      }],
+      shippingAddressSnapshot: { recipientName: 'Buyer', phone: '0901234567', address: 'HCM' },
+      subtotal: 35000, shippingFee: 0, totalAmount: 35000,
+      createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/orders/${oldOrder._id}/status`)
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({ status: 'cancelled', cancelReason: 'Đổi ý' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/24h/);
+  });
 });
 
 // ─── GET /orders/:id ───────────────────────────────────────────────────────────
