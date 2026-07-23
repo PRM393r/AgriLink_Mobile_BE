@@ -65,11 +65,16 @@ const updateRole = async (req, res) => {
     if (!['farmer', 'supplier', 'customer'].includes(role)) {
       return sendError(res, 400, 'Invalid role. Must be farmer | supplier | customer');
     }
-    const user = await User.findByIdAndUpdate(
-      req.user.sub,
-      { role },
-      { new: true, lean: true }
-    );
+
+    const update = { role };
+    // Farmer/supplier mới chọn role lần đầu (chưa từng có role) phải chờ admin duyệt trước khi bán.
+    // Đổi role qua lại (đã có role trước đó) không reset lại approval để tránh khoá nhầm seller đang hoạt động.
+    if (['farmer', 'supplier'].includes(role)) {
+      const currentUser = await User.findById(req.user.sub).select('role').lean();
+      if (!currentUser?.role) update.sellerApprovalStatus = 'pending';
+    }
+
+    const user = await User.findByIdAndUpdate(req.user.sub, update, { new: true, lean: true });
     if (!user) return sendError(res, 404, 'User not found');
 
     const tokens = buildTokenPair(user);
@@ -80,6 +85,7 @@ const updateRole = async (req, res) => {
       res,
       {
         role: user.role,
+        sellerApprovalStatus: user.sellerApprovalStatus,
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         user: {

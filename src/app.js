@@ -20,6 +20,7 @@ const geographyRouter = require('./modules/geography/geography.router');
 const marketPricesRouter = require('./modules/market-prices/market-prices.router');
 const traceRouter = require('./modules/trace/trace.router');
 const paymentsRouter = require('./modules/payments/payments.router');
+const adminRouter = require('./modules/admin/admin.router');
 
 const app = express();
 const server = http.createServer(app);
@@ -49,6 +50,7 @@ app.use(`${API}/geography`, geographyRouter);
 app.use(`${API}/market-prices`, marketPricesRouter);
 app.use(`${API}/trace`, traceRouter);
 app.use(`${API}/payments`, paymentsRouter);
+app.use(`${API}/admin`, adminRouter);
 
 app.get(`${API}/health`, (_req, res) => res.json({ status: 'ok', time: new Date() }));
 

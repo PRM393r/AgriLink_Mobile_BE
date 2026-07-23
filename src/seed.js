@@ -69,6 +69,14 @@ const TRACE_RECORDS = [
 // ─── Demo users ───────────────────────────────────────────────────────────────
 const USERS = [
   {
+    email: 'admin@agrilink.vn',
+    password: 'demo123',
+    role: 'admin',
+    fullName: 'Quản trị viên AgriLink',
+    address: 'Hồ Chí Minh',
+    isVerified: true,
+  },
+  {
     email: 'farmer1@agrilink.vn',
     password: 'demo123',
     role: 'farmer',
@@ -729,7 +737,7 @@ async function seed() {
       subtotal,
       shippingFee: 0,
       totalAmount: subtotal,
-      paymentMethod: ['cod', 'bank_transfer', 'vnpay'][randInt(0, 2)],
+      paymentMethod: ['cod', 'bank_transfer'][randInt(0, 1)],
       status,
       statusHistory,
       createdAt,

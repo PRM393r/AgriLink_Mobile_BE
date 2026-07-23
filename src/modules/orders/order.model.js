@@ -37,12 +37,16 @@ const orderSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true },
     paymentMethod: {
       type: String,
-      enum: ['cod', 'bank_transfer', 'vnpay', 'payos'],
+      enum: ['cod', 'bank_transfer', 'payos'],
       default: 'cod',
     },
+    // bank_transfer cần xác nhận 2 chiều: buyer báo đã chuyển ('buyer_confirmed'),
+    // seller tự kiểm tra tài khoản rồi mới xác nhận thật ('paid'). Tránh buyer tự khai
+    // đã thanh toán mà không ai kiểm chứng. PayOS/COD không qua bước buyer_confirmed
+    // (PayOS đi thẳng 'paid' qua webhook, COD giữ 'unpaid' tới khi giao xong).
     paymentStatus: {
       type: String,
-      enum: ['unpaid', 'paid', 'refunded'],
+      enum: ['unpaid', 'buyer_confirmed', 'paid', 'refunded'],
       default: 'unpaid',
     },
     paymentRecipient: {
