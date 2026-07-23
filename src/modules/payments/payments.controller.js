@@ -113,14 +113,46 @@ const handleWebhook = async (req, res) => {
 };
 
 // ─── GET /payments/payos/orders/:orderId/status ──────────────────────────────
-// Mobile poll trạng thái sau khi quay lại từ trình duyệt (return/cancel URL không đủ tin cậy để tự confirm).
+// Mobile poll trạng thái sau khi quay lại từ WebView.
+// Verify trực tiếp với PayOS API — không phụ thuộc webhook (webhook không khả dụng ở dev).
 const getPaymentStatus = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.orderId).lean();
+    const order = await Order.findById(req.params.orderId);
     if (!order) return sendError(res, 404, 'Order not found');
     if (order.buyerId.toString() !== req.user.sub) {
       return sendError(res, 403, 'Forbidden: not your order');
     }
+
+    // Nếu DB chưa paid, verify với PayOS API
+    if (order.paymentStatus !== 'paid') {
+      try {
+        const payos = getPayOSClient();
+        const payosInfo = await payos.paymentRequests.get(order.payosOrderCode);
+
+        if (payosInfo && payosInfo.status === 'PAID') {
+          order.paymentStatus = 'paid';
+          await order.save();
+          await createNotification(
+            order.sellerId.toString(),
+            'system',
+            'Đơn hàng đã thanh toán',
+            `Đơn hàng #${order.orderCode} đã được thanh toán qua PayOS.`,
+            { orderId: order._id.toString(), orderCode: order.orderCode }
+          );
+          await createNotification(
+            order.buyerId.toString(),
+            'system',
+            'Thanh toán thành công',
+            `Bạn đã thanh toán thành công đơn hàng #${order.orderCode}.`,
+            { orderId: order._id.toString(), orderCode: order.orderCode }
+          );
+        }
+      } catch (payosErr) {
+        // PayOS API lỗi (network, timeout) — vẫn trả DB status
+        console.warn('[PayOS] getPaymentInfo failed:', payosErr.message);
+      }
+    }
+
     return sendSuccess(res, { paymentStatus: order.paymentStatus, orderStatus: order.status });
   } catch (err) {
     return sendError(res, 500, err.message);
