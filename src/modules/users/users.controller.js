@@ -1,5 +1,19 @@
+const bcrypt = require('bcryptjs');
 const User = require('./user.model');
+const { signAccess, signRefresh } = require('../../utils/jwt');
 const { sendSuccess, sendError } = require('../../utils/response');
+
+const buildTokenPair = (user) => {
+  const payload = {
+    sub: user._id.toString(),
+    email: user.email,
+    role: user.role,
+  };
+  return {
+    accessToken: signAccess(payload),
+    refreshToken: signRefresh(payload),
+  };
+};
 
 const getMe = async (req, res) => {
   try {
@@ -44,6 +58,7 @@ const updateMe = async (req, res) => {
 };
 
 // PUT /users/me/role — Bước 3 sau verify email
+// Phải cấp JWT mới vì authorize() đọc role từ access token, không từ DB.
 const updateRole = async (req, res) => {
   try {
     const { role } = req.body;
@@ -61,7 +76,27 @@ const updateRole = async (req, res) => {
 
     const user = await User.findByIdAndUpdate(req.user.sub, update, { new: true, lean: true });
     if (!user) return sendError(res, 404, 'User not found');
-    return sendSuccess(res, { role: user.role, sellerApprovalStatus: user.sellerApprovalStatus }, 'Role updated');
+
+    const tokens = buildTokenPair(user);
+    const tokenHash = await bcrypt.hash(tokens.refreshToken, 8);
+    await User.findByIdAndUpdate(user._id, { refreshTokenHash: tokenHash });
+
+    return sendSuccess(
+      res,
+      {
+        role: user.role,
+        sellerApprovalStatus: user.sellerApprovalStatus,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        user: {
+          id: user._id,
+          email: user.email,
+          role: user.role,
+          fullName: user.fullName,
+        },
+      },
+      'Role updated'
+    );
   } catch (err) {
     return sendError(res, 500, err.message);
   }
